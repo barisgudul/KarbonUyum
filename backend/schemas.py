@@ -1,35 +1,33 @@
 # backend/schemas.py
 
+from datetime import date
 from typing import List, Optional
+
 from pydantic import BaseModel, EmailStr, Field
 
-# -- User Schemas --
+from models import ActivityType
 
-class UserBase(BaseModel):
-    email: EmailStr
+# -- ActivityData Schemas (En alttaki yapı, önce bu tanımlanmalı) --
+class ActivityDataBase(BaseModel):
+    activity_type: ActivityType
+    quantity: float
+    unit: str
+    start_date: date
+    end_date: date
 
-class UserCreate(UserBase):
-    password: str = Field(..., min_length=8, max_length=72)
+class ActivityDataCreate(ActivityDataBase):
+    pass
 
-
-class User(UserBase):
+class ActivityData(ActivityDataBase):
     id: int
-    is_active: bool
-    companies: List[Company] = [] # Kullanıcı bilgilerini çekerken şirketleri de getir
+    facility_id: int
+    calculated_co2e_kg: Optional[float] = None
 
     class Config:
         from_attributes = True
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
 
-class TokenData(BaseModel):
-    email: Optional[EmailStr] = None
-
-# ... mevcut şemaların altına ...
-
-# -- Facility Schemas --
+# -- Facility Schemas (ActivityData'yı kullanır, ikinci bu olmalı) --
 class FacilityBase(BaseModel):
     name: str
     city: Optional[str] = None
@@ -41,10 +39,13 @@ class FacilityCreate(FacilityBase):
 class Facility(FacilityBase):
     id: int
     company_id: int
+    activity_data: List[ActivityData] = []
 
     class Config:
         from_attributes = True
 
+
+# -- Company Schemas (Facility'yi kullanır, üçüncü bu olmalı) --
 class CompanyBase(BaseModel):
     name: str
     tax_number: Optional[str] = None
@@ -55,7 +56,32 @@ class CompanyCreate(CompanyBase):
 class Company(CompanyBase):
     id: int
     owner_id: int
-    facilities: List[Facility] = [] # Şirket bilgilerini çekerken tesisleri de getir
+    facilities: List[Facility] = []
 
     class Config:
         from_attributes = True
+
+
+# -- User Schemas (Company'yi kullanır, dördüncü bu olmalı) --
+class UserBase(BaseModel):
+    email: EmailStr
+
+class UserCreate(UserBase):
+    password: str = Field(..., min_length=8, max_length=72)
+
+class User(UserBase):
+    id: int
+    is_active: bool
+    companies: List[Company] = []
+
+    class Config:
+        from_attributes = True
+
+
+# -- Token Schemas (Bağımsızdır, sonda olabilir) --
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[EmailStr] = None

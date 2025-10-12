@@ -34,3 +34,18 @@ def create_company_facility(db: Session, facility: schemas.FacilityCreate, compa
     db.commit()
     db.refresh(db_facility)
     return db_facility
+
+
+def create_facility_activity_data(db: Session, activity_data: schemas.ActivityDataCreate, facility_id: int, co2e_kg: float):
+    db_activity_data = models.ActivityData(
+        **activity_data.model_dump(), 
+        facility_id=facility_id,
+        calculated_co2e_kg=co2e_kg
+    )
+    db.add(db_activity_data)
+    db.commit()
+    db.refresh(db_activity_data)
+    return db_activity_data
+
+def get_facility_by_id(db: Session, facility_id: int):
+    return db.query(models.Facility).filter(models.Facility.id == facility_id).first()
