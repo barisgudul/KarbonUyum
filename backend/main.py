@@ -184,6 +184,17 @@ def create_activity_data_for_facility(
         co2e_kg=co2e_kg
     )
 
+@app.get("/dashboard/summary", response_model=schemas.DashboardSummary)
+def get_summary_for_dashboard(
+    db: Session = Depends(get_db),
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    """
+    Giriş yapmış kullanıcının tüm verilerini özetleyerek
+    dashboard için analitik veriler sunar.
+    """
+    return crud.get_dashboard_summary(db=db, user_id=current_user.id)
+
 @app.get("/users/me/", response_model=schemas.User)
 def read_users_me(current_user: schemas.User = Depends(auth.get_current_user)):
     return current_user

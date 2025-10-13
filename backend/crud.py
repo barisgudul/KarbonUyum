@@ -1,6 +1,8 @@
 # backend/crud.py
 from sqlalchemy.orm import Session
-import models, schemas, auth # auth'u import et
+from sqlalchemy import func # <-- YENİ
+from datetime import datetime, date, timedelta # <-- datetime, date ve timedelta eklendi
+import models, schemas, auth 
 
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
@@ -49,3 +51,49 @@ def create_facility_activity_data(db: Session, activity_data: schemas.ActivityDa
 
 def get_facility_by_id(db: Session, facility_id: int):
     return db.query(models.Facility).filter(models.Facility.id == facility_id).first()
+
+
+def get_dashboard_summary(db: Session, user_id: int):
+    # NOT: SQLite/PostgreSQL uyumluluğu için `strftime` yerine `to_char` veya `EXTRACT` kullanmak gerekebilir.
+    # Python 3.14/SQLite uyumluluğu için basit strftime kullandık.
+
+    # Kullanıcının sahip olduğu tüm tesis ID'lerini al
+    facility_ids = db.query(models.Facility.id).join(models.Company).filter(models.Company.owner_id == user_id).subquery()
+
+    # Aylık emisyonları gruplayarak hesapla
+    # PostgreSQL için: func.to_char(models.ActivityData.start_date, 'YYYY-MM')
+    # SQLite/Genel için: func.strftime("%Y-%m", models.ActivityData.start_date)
+    
+    # Platform bağımsızlığı için denenen basit bir aylık gruplama (eğer hata verirse PostgreSQL'e özgü `to_char` kullanırız)
+    monthly_trend_query = (
+        db.query(
+            func.to_char(models.ActivityData.start_date, 'YYYY-MM').label("month"),
+            func.sum(models.ActivityData.calculated_co2e_kg).label("total_co2e_kg"),
+        )
+        .filter(models.ActivityData.facility_id.in_(facility_ids))
+        .group_by("month")
+        .order_by("month")
+        .all()
+    )
+    
+    # Sorgu sonucunu Pydantic modeline uygun hale getir
+    monthly_trend = [{"month": row.month, "total_co2e_kg": row.total_co2e_kg} for row in monthly_trend_query]
+
+    # Mevcut ve önceki ay toplamlarını bul
+    today = date.today()
+    current_month_str = today.strftime("%Y-%m")
+    
+    # Önceki ayı hesapla
+    first_day_of_current_month = today.replace(day=1)
+    last_day_of_previous_month = first_day_of_current_month - timedelta(days=1)
+    previous_month_str = last_day_of_previous_month.strftime("%Y-%m")
+
+    # Listeden aylık toplamları çıkar (Eğer veri yoksa 0.0 olarak ayarla)
+    current_month_total = next((item['total_co2e_kg'] for item in monthly_trend if item['month'] == current_month_str), 0.0)
+    previous_month_total = next((item['total_co2e_kg'] for item in monthly_trend if item['month'] == previous_month_str), 0.0)
+
+    return {
+        "current_month_total": current_month_total,
+        "previous_month_total": previous_month_total,
+        "monthly_trend": monthly_trend
+    }

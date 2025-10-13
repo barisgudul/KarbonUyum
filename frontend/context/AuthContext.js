@@ -11,6 +11,20 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  // fetchUser'ı dışarı taşıdık ki her yerden erişebilelim
+  const fetchUser = async () => {
+    try {
+      const { data } = await api.get('/users/me/');
+      setUser(data);
+    } catch (error) {
+      console.error("Failed to fetch user, token might be invalid", error);
+      localStorage.removeItem('token');
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
@@ -20,30 +34,16 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  const fetchUser = async () => {
-    try {
-      const { data } = await api.get('/users/me/');
-      setUser(data);
-    } catch (error) {
-      console.error("Failed to fetch user, token might be invalid", error);
-      localStorage.removeItem('token'); // Geçersiz token'ı temizle
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const login = async (email, password) => {
-    // FastAPI'nin /token endpoint'i 'application/x-www-form-urlencoded' bekler
     const params = new URLSearchParams();
-    params.append('username', email); // FastAPI'nin OAuth2 standardı 'username' bekler
+    params.append('username', email);
     params.append('password', password);
 
     const { data } = await api.post('/token', params, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
     localStorage.setItem('token', data.access_token);
-    api.defaults.headers.Authorization = `Bearer ${data.access_token}`; // axios instance'ını anında güncelle
+    api.defaults.headers.Authorization = `Bearer ${data.access_token}`;
     await fetchUser();
   };
 
@@ -51,11 +51,12 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     delete api.defaults.headers.Authorization;
     setUser(null);
-    router.push('/login'); // Çıkış yapınca login sayfasına yönlendir
+    router.push('/login');
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    // YENİ: value objesine fetchUser'ı ekledik
+    <AuthContext.Provider value={{ user, login, logout, loading, fetchUser }}>
       {!loading && children}
     </AuthContext.Provider>
   );

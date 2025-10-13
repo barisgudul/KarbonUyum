@@ -85,3 +85,12 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[EmailStr] = None
+
+class MonthlyEmission(BaseModel):
+    month: str  # Örn: "2024-04"
+    total_co2e_kg: float
+
+class DashboardSummary(BaseModel):
+    current_month_total: float
+    previous_month_total: float
+    monthly_trend: List[MonthlyEmission]
