@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -49,6 +50,12 @@ export default function LoginPage() {
           Giriş Yap
         </button>
       </form>
+      <p style={{ marginTop: '20px', textAlign: 'center', fontSize: '14px' }}>
+      Hesabın yok mu?{' '}
+      <Link href="/register" style={{ color: '#2563EB', textDecoration: 'underline' }}>
+        Kayıt Ol
+      </Link>
+    </p>
     </div>
   );
 }

@@ -4,7 +4,7 @@ from datetime import timedelta
 from typing import List
 
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -194,6 +194,58 @@ def get_summary_for_dashboard(
     dashboard için analitik veriler sunar.
     """
     return crud.get_dashboard_summary(db=db, user_id=current_user.id)
+
+
+@app.delete("/companies/{company_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_company(
+    company_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    db_company = crud.get_company_by_id(db, company_id=company_id)
+    if not db_company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    # Güvenlik kontrolü: Kullanıcı bu şirketin sahibi mi?
+    if db_company.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this company")
+    
+    # crud.py'deki fonksiyon, içinde tesis varsa zaten hata verecektir.
+    crud.delete_company(db=db, company_id=company_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.delete("/facilities/{facility_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_facility(
+    facility_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    db_facility = crud.get_facility_by_id(db, facility_id=facility_id)
+    if not db_facility:
+        raise HTTPException(status_code=404, detail="Facility not found")
+    # Güvenlik kontrolü: Kullanıcı bu tesisin ait olduğu şirketin sahibi mi?
+    if db_facility.company.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this facility")
+
+    crud.delete_facility(db=db, facility_id=facility_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.delete("/activity-data/{data_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_activity_data(
+    data_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    db_data = crud.get_activity_data_by_id(db, data_id=data_id)
+    if not db_data:
+        raise HTTPException(status_code=404, detail="Activity data not found")
+    # Güvenlik kontrolü: Kullanıcı bu verinin ait olduğu tesisin sahibi mi?
+    if db_data.facility.company.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this data")
+
+    crud.delete_activity_data(db=db, data_id=data_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @app.get("/users/me/", response_model=schemas.User)
 def read_users_me(current_user: schemas.User = Depends(auth.get_current_user)):

@@ -1,7 +1,8 @@
 # backend/crud.py
 from sqlalchemy.orm import Session
 from sqlalchemy import func # <-- YENİ
-from datetime import datetime, date, timedelta # <-- datetime, date ve timedelta eklendi
+from datetime import datetime, date, timedelta 
+from fastapi import HTTPException
 import models, schemas, auth 
 
 def get_user_by_email(db: Session, email: str):
@@ -97,3 +98,36 @@ def get_dashboard_summary(db: Session, user_id: int):
         "previous_month_total": previous_month_total,
         "monthly_trend": monthly_trend
     }
+
+def delete_company(db: Session, company_id: int):
+    db_company = get_company_by_id(db, company_id=company_id)
+    if not db_company:
+        return None
+    # Güvenlik: Şirketin altında tesis varsa silmeyi engelle
+    if db_company.facilities:
+        raise HTTPException(status_code=400, detail="Cannot delete company with associated facilities. Please delete facilities first.")
+    db.delete(db_company)
+    db.commit()
+    return db_company
+
+def delete_facility(db: Session, facility_id: int):
+    db_facility = get_facility_by_id(db, facility_id=facility_id)
+    if not db_facility:
+        return None
+    # Güvenlik: Tesisin altında aktivite verisi varsa silmeyi engelle
+    if db_facility.activity_data:
+        raise HTTPException(status_code=400, detail="Cannot delete facility with associated activity data. Please delete data first.")
+    db.delete(db_facility)
+    db.commit()
+    return db_facility
+
+def get_activity_data_by_id(db: Session, data_id: int):
+    return db.query(models.ActivityData).filter(models.ActivityData.id == data_id).first()
+
+def delete_activity_data(db: Session, data_id: int):
+    db_activity_data = get_activity_data_by_id(db, data_id=data_id)
+    if not db_activity_data:
+        return None
+    db.delete(db_activity_data)
+    db.commit()
+    return db_activity_data
