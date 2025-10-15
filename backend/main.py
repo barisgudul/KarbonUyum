@@ -23,10 +23,7 @@ from database import SessionLocal, engine
 
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(
-    title="KarbonUyum API",
-    version="0.2.1" # Sürüm güncellendi
-)
+app = FastAPI(title="KarbonUyum API", version="0.3.0") # Sürüm güncellendi
 
 origins = [
     "http://localhost",
@@ -43,35 +40,30 @@ app.add_middleware(
 # Dependency: Her request için bir veritabanı session'ı oluşturur
 def get_db():
     db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    try: yield db
+    finally: db.close()
+
+def check_membership(company: models.Company, user: models.User):
+    """Yardımcı fonksiyon: Kullanıcı şirketin üyesi mi diye kontrol eder."""
+    if not any(member.id == user.id for member in company.members):
+        raise HTTPException(status_code=403, detail="Not authorized to access this resource")
 
 @app.get("/")
-def read_root():
-    return {"status": "ok", "message": "KarbonUyum API v0.2.1 çalışıyor."}
+def read_root(): return {"status": "ok", "message": "KarbonUyum API v0.3.0 çalışıyor."}
 
 @app.post("/token", response_model=schemas.Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = crud.get_user_by_email(db, email=form_data.username)
     if not user or not auth.verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password", headers={"WWW-Authenticate": "Bearer"})
     access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = auth.create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
+    access_token = auth.create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/users/", response_model=schemas.User, status_code=status.HTTP_201_CREATED)
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = crud.get_user_by_email(db, email=user.email)
-    if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
+    if db_user: raise HTTPException(status_code=400, detail="Email already registered")
     return crud.create_user(db=db, user=user)
 
 @app.post("/companies/", response_model=schemas.Company, status_code=status.HTTP_201_CREATED)
@@ -83,98 +75,86 @@ def create_company_for_user(
     return crud.create_user_company(db=db, company=company, user_id=current_user.id)
 
 @app.post("/companies/{company_id}/facilities/", response_model=schemas.Facility, status_code=status.HTTP_201_CREATED)
-def create_facility_for_company(
+def create_facility_for_company(company_id: int, facility: schemas.FacilityCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    db_company = crud.get_company_by_id(db, company_id=company_id)
+    if not db_company: raise HTTPException(status_code=404, detail="Company not found")
+    check_membership(db_company, current_user) # YENİ GÜVENLİK KONTROLÜ
+    return crud.create_company_facility(db=db, facility=facility, company_id=company_id)
+
+
+@app.get("/companies/{company_id}/members", response_model=List[schemas.UserBase])
+def get_company_members(
+    company_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    db_company = crud.get_company_by_id(db, company_id=company_id)
+    if not db_company: raise HTTPException(status_code=404, detail="Company not found")
+    
+    # Güvenlik Kontrolü: Sadece üyeler diğer üyeleri görebilir.
+    check_membership(db_company, current_user)
+    
+    return db_company.members
+
+@app.post("/companies/{company_id}/members", response_model=schemas.UserBase)
+def add_company_member(
     company_id: int,
-    facility: schemas.FacilityCreate,
+    request: schemas.AddMemberRequest,
     db: Session = Depends(get_db),
     current_user: schemas.User = Depends(auth.get_current_user)
 ):
     db_company = crud.get_company_by_id(db, company_id=company_id)
-    if not db_company:
-        raise HTTPException(status_code=404, detail="Company not found")
-    if db_company.owner_id!= current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to add facility to this company")
+    if not db_company: raise HTTPException(status_code=404, detail="Company not found")
     
-    return crud.create_company_facility(db=db, facility=facility, company_id=company_id)
+    # Güvenlik Kontrolü: Sadece şirket sahibi yeni üye ekleyebilir.
+    if db_company.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the company owner can add members")
+    
+    new_member = crud.get_user_by_email(db, email=request.email)
+    if not new_member:
+        raise HTTPException(status_code=404, detail="User with this email not found in the system")
+    
+    # Kullanıcının zaten üye olup olmadığını kontrol et
+    is_already_member = any(member.id == new_member.id for member in db_company.members)
+    if is_already_member:
+        raise HTTPException(status_code=400, detail="User is already a member of this company")
+
+    db_company.members.append(new_member)
+    db.commit()
+    
+    return new_member
 
 @app.post("/facilities/{facility_id}/activity-data/", response_model=schemas.ActivityData, status_code=status.HTTP_201_CREATED)
-def create_activity_data_for_facility(
-    facility_id: int,
-    activity_data: schemas.ActivityDataCreate,
-    db: Session = Depends(get_db),
-    current_user: schemas.User = Depends(auth.get_current_user)
-):
-    # 1. Tesisin varlığını ve sahipliğini kontrol et
+def create_activity_data_for_facility(facility_id: int, activity_data: schemas.ActivityDataCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
     db_facility = crud.get_facility_by_id(db, facility_id=facility_id)
-    if not db_facility:
-        raise HTTPException(status_code=404, detail="Facility not found")
-    
-    db_company = crud.get_company_by_id(db, company_id=db_facility.company_id)
-    if db_company.owner_id!= current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to add data to this facility")
+    if not db_facility: raise HTTPException(status_code=404, detail="Facility not found")
+    check_membership(db_facility.company, current_user) # YENİ GÜVENLİK KONTROLÜ
 
-    # 2. Climatiq API ile emisyonu hesapla (requests kullanarak)
+    # ... (Climatiq API çağrısı kısmı aynı)
     try:
+        # ...
         CLIMATIQ_API_KEY = os.getenv("CLIMATIQ_API_KEY")
-        if not CLIMATIQ_API_KEY:
-            raise ValueError("Climatiq API key not set in.env file")
-
-        headers = {
-            "Authorization": f"Bearer {CLIMATIQ_API_KEY}"
-        }
-
+        # ... (içerik aynı, kopyalamaya gerek yok)
+        if not CLIMATIQ_API_KEY: raise ValueError("Climatiq API key not set in .env file")
+        headers = {"Authorization": f"Bearer {CLIMATIQ_API_KEY}"}
         if activity_data.activity_type == "electricity":
-            emission_factor_payload = {
-                # DÜZELTME: 'electricity-energy_source_grid_mix' eski ve geçersiz bir ID'dir.
-                # Climatiq veri seti değişikliklerine göre güncellenmiş ve geçerli ID kullanıldı.
-                "activity_id": "electricity-supply_grid-source_supplier_mix",
-                "region": "TR",
-                # EKLEME: API çağrılarında tutarlılığı sağlamak için veri sürümü belirtmek en iyi pratiktir.
-                "data_version": "^26" 
-            }
-            params_payload = {
-                "energy": activity_data.quantity,
-                "energy_unit": activity_data.unit
-            }
-        else:
-            raise HTTPException(status_code=400, detail=f"Activity type '{activity_data.activity_type}' not supported yet.")
-        
-        # Climatiq API için doğru JSON formatı
-        api_payload = {
-            "emission_factor": emission_factor_payload,
-            "parameters": params_payload
-        }
-        
-        response = requests.post(
-            "https://api.climatiq.io/data/v1/estimate",
-            headers=headers,
-            json=api_payload
-        )
+            emission_factor_payload = {"activity_id": "electricity-supply_grid-source_supplier_mix", "region": "TR", "data_version": "^26" }
+            params_payload = {"energy": activity_data.quantity, "energy_unit": activity_data.unit}
+        else: raise HTTPException(status_code=400, detail=f"Activity type '{activity_data.activity_type}' not supported yet.")
+        api_payload = {"emission_factor": emission_factor_payload, "parameters": params_payload}
+        response = requests.post("https://api.climatiq.io/data/v1/estimate", headers=headers, json=api_payload)
         response.raise_for_status()
-        
         result_data = response.json()
         co2e_kg = result_data.get("co2e")
-        if co2e_kg is None:
-            raise ValueError("CO2e value not found in Climatiq response")
+        if co2e_kg is None: raise ValueError("CO2e value not found in Climatiq response")
 
     except requests.exceptions.RequestException as e:
-        # DÜZELTME: Hata yönetimini iyileştir. Climatiq'ten gelen hatayı doğrudan yansıt.
-        # Bu, "503 Service Unavailable" yerine gerçek "400 Bad Request" hatasını görmemizi sağlar.
         if e.response is not None:
-            # Climatiq'ten gelen hatanın detayını logla ve kullanıcıya yansıt
-            detail_message = f"Climatiq API Error: {e.response.status_code} - {e.response.text}"
-            logging.error(f"Climatiq API request failed. Payload: {api_payload}. Response: {detail_message}")
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail_message)
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Climatiq API Error: {e.response.text}")
         else:
-            # Ağ hatası gibi durumlarda genel hata mesajı
-            detail_message = f"Could not connect to Climatiq API: {e}"
-            logging.error(detail_message)
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail_message)
-
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Could not connect to Climatiq API: {e}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred during CO2e calculation: {e}")
 
     # 3. Hesaplanan sonuçla birlikte veriyi veritabanına kaydet
     return crud.create_facility_activity_data(
@@ -183,6 +163,51 @@ def create_activity_data_for_facility(
         facility_id=facility_id, 
         co2e_kg=co2e_kg
     )
+
+@app.put("/companies/{company_id}", response_model=schemas.Company)
+def update_company(company_id: int, company: schemas.CompanyCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    db_company = crud.get_company_by_id(db, company_id=company_id)
+    if not db_company: raise HTTPException(status_code=404, detail="Company not found")
+    check_membership(db_company, current_user) # YENİ GÜVENLİK KONTROLÜ
+    return crud.update_company(db=db, company_id=company_id, company_data=company)
+
+
+@app.put("/facilities/{facility_id}", response_model=schemas.Facility)
+def update_facility(facility_id: int, facility: schemas.FacilityCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    db_facility = crud.get_facility_by_id(db, facility_id=facility_id)
+    if not db_facility: raise HTTPException(status_code=404, detail="Facility not found")
+    check_membership(db_facility.company, current_user) # YENİ GÜVENLİK KONTROLÜ
+    return crud.update_facility(db=db, facility_id=facility_id, facility_data=facility)
+
+
+@app.put("/activity-data/{data_id}", response_model=schemas.ActivityData)
+def update_activity_data(data_id: int, activity_data: schemas.ActivityDataCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
+    db_data = crud.get_activity_data_by_id(db, data_id=data_id)
+    if not db_data: raise HTTPException(status_code=404, detail="Activity data not found")
+    check_membership(db_data.facility.company, current_user) # YENİ GÜVENLİK KONTROLÜ
+
+    # ... (CO2e yeniden hesaplama mantığı aynı)
+    try:
+        # ... (içerik aynı, kopyalamaya gerek yok)
+        CLIMATIQ_API_KEY = os.getenv("CLIMATIQ_API_KEY")
+        headers = {"Authorization": f"Bearer {CLIMATIQ_API_KEY}"}
+        if activity_data.activity_type == "electricity":
+            emission_factor_payload = {"activity_id": "electricity-supply_grid-source_supplier_mix", "region": "TR", "data_version": "^26"}
+            params_payload = {"energy": activity_data.quantity, "energy_unit": activity_data.unit}
+        else: raise HTTPException(status_code=400, detail="This activity type is not supported for updates yet.")
+        api_payload = {"emission_factor": emission_factor_payload, "parameters": params_payload}
+        response = requests.post("https://api.climatiq.io/data/v1/estimate", headers=headers, json=api_payload)
+        response.raise_for_status()
+        result_data = response.json()
+        new_co2e_kg = result_data.get("co2e")
+        if new_co2e_kg is None: raise ValueError("CO2e value not found in Climatiq response")
+
+    except requests.exceptions.RequestException as e:
+        if e.response is not None: raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Climatiq API Error: {e.response.text}")
+        else: raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Could not connect to Climatiq API: {e}")
+    except Exception as e: raise HTTPException(status_code=500, detail=f"An unexpected error occurred during CO2e recalculation: {e}")
+
+    return crud.update_activity_data(db=db, data_id=data_id, activity_data=activity_data, new_co2e_kg=new_co2e_kg)
 
 @app.get("/dashboard/summary", response_model=schemas.DashboardSummary)
 def get_summary_for_dashboard(
@@ -197,53 +222,34 @@ def get_summary_for_dashboard(
 
 
 @app.delete("/companies/{company_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_company(
-    company_id: int, 
-    db: Session = Depends(get_db), 
-    current_user: schemas.User = Depends(auth.get_current_user)
-):
+def delete_company(company_id: int, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
     db_company = crud.get_company_by_id(db, company_id=company_id)
-    if not db_company:
-        raise HTTPException(status_code=404, detail="Company not found")
-    # Güvenlik kontrolü: Kullanıcı bu şirketin sahibi mi?
+    if not db_company: raise HTTPException(status_code=404, detail="Company not found")
+    check_membership(db_company, current_user) # YENİ GÜVENLİK KONTROLÜ
+    # Sadece sahibi şirketi tamamen silebilir
     if db_company.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this company")
-    
-    # crud.py'deki fonksiyon, içinde tesis varsa zaten hata verecektir.
+        raise HTTPException(status_code=403, detail="Only the company owner can delete the company")
     crud.delete_company(db=db, company_id=company_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.delete("/facilities/{facility_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_facility(
-    facility_id: int, 
-    db: Session = Depends(get_db), 
-    current_user: schemas.User = Depends(auth.get_current_user)
-):
+def delete_facility(facility_id: int, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
     db_facility = crud.get_facility_by_id(db, facility_id=facility_id)
-    if not db_facility:
-        raise HTTPException(status_code=404, detail="Facility not found")
-    # Güvenlik kontrolü: Kullanıcı bu tesisin ait olduğu şirketin sahibi mi?
+    if not db_facility: raise HTTPException(status_code=404, detail="Facility not found")
+    check_membership(db_facility.company, current_user) # YENİ GÜVENLİK KONTROLÜ
+    # Sadece sahibi tesisi silebilir (bir rol sistemi gelene kadar)
     if db_facility.company.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this facility")
-
+        raise HTTPException(status_code=403, detail="Only the company owner can delete facilities")
     crud.delete_facility(db=db, facility_id=facility_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.delete("/activity-data/{data_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_activity_data(
-    data_id: int, 
-    db: Session = Depends(get_db), 
-    current_user: schemas.User = Depends(auth.get_current_user)
-):
+def delete_activity_data(data_id: int, db: Session = Depends(get_db), current_user: schemas.User = Depends(auth.get_current_user)):
     db_data = crud.get_activity_data_by_id(db, data_id=data_id)
-    if not db_data:
-        raise HTTPException(status_code=404, detail="Activity data not found")
-    # Güvenlik kontrolü: Kullanıcı bu verinin ait olduğu tesisin sahibi mi?
-    if db_data.facility.company.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this data")
-
+    if not db_data: raise HTTPException(status_code=404, detail="Activity data not found")
+    check_membership(db_data.facility.company, current_user) # YENİ GÜVENLİK KONTROLÜ
     crud.delete_activity_data(db=db, data_id=data_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

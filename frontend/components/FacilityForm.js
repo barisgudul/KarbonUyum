@@ -1,33 +1,47 @@
 // frontend/components/FacilityForm.js
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // useEffect'i ekliyoruz
 import api from '../lib/api';
+import toast from 'react-hot-toast'; // react-hot-toast'u import ediyoruz
 
-export default function FacilityForm({ companyId, onFacilityAdded }) {
+export default function FacilityForm({ companyId, onFormSubmit, initialData = null }) {
   const [name, setName] = useState('');
   const [city, setCity] = useState('');
   const [address, setAddress] = useState('');
-  const [error, setError] = useState(null);
+
+  // Eğer initialData varsa (düzenleme modu), formu doldur
+  useEffect(() => {
+    if (initialData) {
+      setName(initialData.name);
+      setCity(initialData.city);
+      setAddress(initialData.address || '');
+    }
+  }, [initialData]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
-    try {
-      // API endpoint'ine companyId'yi dahil ediyoruz
-      await api.post(`/companies/${companyId}/facilities/`, { name, city, address });
-      onFacilityAdded(); // Başarılı olunca Dashboard'u yenile
-      // Formu temizle
-      setName('');
-      setCity('');
-      setAddress('');
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Tesis oluşturulamadı. Lütfen tekrar deneyin.');
-    }
+    const facilityData = { name, city, address };
+
+    // Düzenleme modunda mıyız yoksa yeni kayıt mı?
+    const request = initialData
+      ? api.put(`/facilities/${initialData.id}`, facilityData) // Düzenleme ise PUT
+      : api.post(`/companies/${companyId}/facilities/`, facilityData); // Yeni ise POST
+
+    toast.promise(request, {
+      loading: 'Kaydediliyor...',
+      success: () => {
+        onFormSubmit(); // Dashboard'a haber ver
+        return initialData ? 'Tesis başarıyla güncellendi!' : 'Tesis başarıyla eklendi!';
+      },
+      error: (err) => err.response?.data?.detail || 'Bir hata oluştu.',
+    });
   };
 
   return (
     <form onSubmit={handleSubmit} className="p-4 mt-2 mb-4 ml-4 border-l-2 border-gray-200 bg-gray-50">
-      <h4 className="font-semibold mb-2 text-gray-700">Bu Şirkete Yeni Tesis Ekle</h4>
+      <h4 className="font-semibold mb-2 text-gray-700">
+        {initialData ? 'Tesisi Düzenle' : 'Bu Şirkete Yeni Tesis Ekle'}
+      </h4>
       <div className="space-y-2">
         <input 
           type="text" 
@@ -54,9 +68,8 @@ export default function FacilityForm({ companyId, onFacilityAdded }) {
         />
       </div>
       <button type="submit" className="mt-2 px-4 py-2 text-white bg-blue-600 rounded hover:bg-blue-700">
-        Tesis Ekle
+        {initialData ? 'Güncelle' : 'Tesis Ekle'}
       </button>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
     </form>
   );
 }

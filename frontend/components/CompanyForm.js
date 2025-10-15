@@ -1,31 +1,47 @@
 // frontend/components/CompanyForm.js
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // useEffect'i ekliyoruz
 import api from '../lib/api';
+import toast from 'react-hot-toast'; // react-hot-toast'u import ediyoruz
 
-export default function CompanyForm({ onCompanyAdded }) {
+// Prop adını onFormSubmit olarak daha genel hale getirdik
+export default function CompanyForm({ onFormSubmit, initialData = null }) {
   const [name, setName] = useState('');
   const [taxNumber, setTaxNumber] = useState('');
-  const [error, setError] = useState(null);
+
+  // Eğer initialData varsa (yani düzenleme modundaysak), formu doldur
+  useEffect(() => {
+    if (initialData) {
+      setName(initialData.name);
+      setTaxNumber(initialData.tax_number);
+    }
+  }, [initialData]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
-    try {
-      await api.post('/companies/', { name, tax_number: taxNumber });
-      onCompanyAdded(); // Başarılı olunca Dashboard'a haber ver
-      // Formu temizle
-      setName('');
-      setTaxNumber('');
-    } catch (err) {
-      // Backend'den gelen hata mesajını göster
-      setError(err.response?.data?.detail || 'Şirket oluşturulamadı. Lütfen tekrar deneyin.');
-    }
+    const companyData = { name, tax_number: taxNumber };
+
+    // Düzenleme modunda mıyız yoksa yeni kayıt mı?
+    const request = initialData
+      ? api.put(`/companies/${initialData.id}`, companyData) // Düzenleme ise PUT isteği
+      : api.post('/companies/', companyData); // Yeni ise POST isteği
+
+    // react-hot-toast ile şık bir bildirim gösteriyoruz
+    toast.promise(request, {
+      loading: 'Kaydediliyor...',
+      success: () => {
+        onFormSubmit(); // Parent component'e (Dashboard) haber ver
+        return initialData ? 'Başarıyla güncellendi!' : 'Başarıyla eklendi!';
+      },
+      error: (err) => err.response?.data?.detail || 'Bir hata oluştu.',
+    });
   };
 
   return (
     <form onSubmit={handleSubmit} className="p-4 mb-6 border rounded-lg bg-gray-50">
-      <h3 className="text-lg font-semibold mb-2">Yeni Şirket Ekle</h3>
+      <h3 className="text-lg font-semibold mb-2">
+        {initialData ? 'Şirketi Düzenle' : 'Yeni Şirket Ekle'}
+      </h3>
       <div className="space-y-2">
         <input
           type="text"
@@ -45,9 +61,8 @@ export default function CompanyForm({ onCompanyAdded }) {
         />
       </div>
       <button type="submit" className="mt-2 px-4 py-2 text-white bg-blue-600 rounded hover:bg-blue-700">
-        Ekle
+        {initialData ? 'Güncelle' : 'Ekle'}
       </button>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
     </form>
   );
 }

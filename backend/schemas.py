@@ -1,13 +1,20 @@
-# backend/schemas.py
+# backend/schemas.py 
 
 from datetime import date
 from typing import List, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, computed_field
 
 from models import ActivityType
 
-# -- ActivityData Schemas (En alttaki yapı, önce bu tanımlanmalı) --
+# -- User Schemas (Önce UserBase tanımlanmalı) --
+class UserBase(BaseModel):
+    email: EmailStr
+
+class UserCreate(UserBase):
+    password: str = Field(..., min_length=8, max_length=72)
+
+# -- ActivityData Schemas --
 class ActivityDataBase(BaseModel):
     activity_type: ActivityType
     quantity: float
@@ -22,12 +29,9 @@ class ActivityData(ActivityDataBase):
     id: int
     facility_id: int
     calculated_co2e_kg: Optional[float] = None
+    class Config: from_attributes = True
 
-    class Config:
-        from_attributes = True
-
-
-# -- Facility Schemas (ActivityData'yı kullanır, ikinci bu olmalı) --
+# -- Facility Schemas --
 class FacilityBase(BaseModel):
     name: str
     city: Optional[str] = None
@@ -40,12 +44,9 @@ class Facility(FacilityBase):
     id: int
     company_id: int
     activity_data: List[ActivityData] = []
+    class Config: from_attributes = True
 
-    class Config:
-        from_attributes = True
-
-
-# -- Company Schemas (Facility'yi kullanır, üçüncü bu olmalı) --
+# -- Company Schemas --
 class CompanyBase(BaseModel):
     name: str
     tax_number: Optional[str] = None
@@ -56,38 +57,49 @@ class CompanyCreate(CompanyBase):
 class Company(CompanyBase):
     id: int
     owner_id: int
+    members: List[UserBase] = [] # YENİ: Üyeleri de göstereceğiz
     facilities: List[Facility] = []
+    class Config: from_attributes = True
 
-    class Config:
-        from_attributes = True
-
-
-# -- User Schemas (Company'yi kullanır, dördüncü bu olmalı) --
-class UserBase(BaseModel):
-    email: EmailStr
-
-class UserCreate(UserBase):
-    password: str = Field(..., min_length=8, max_length=72)
-
+# -- User Şeması (Artık Company'yi kullanabilir) --
 class User(UserBase):
     id: int
     is_active: bool
-    companies: List[Company] = []
+    owned_companies: List[Company] = []
+    member_of_companies: List[Company] = []
+
+    # YENİ: Bu 'computed_field', Pydantic'e 'companies' adında yeni bir alan oluşturmasını söyler.
+    # Bu alanın değeri, aşağıdaki fonksiyonun sonucudur.
+    @computed_field
+    @property
+    def companies(self) -> List[Company]:
+        """Kullanıcının sahip olduğu ve üye olduğu tüm şirketleri birleştirir."""
+        all_companies = {c.id: c for c in self.owned_companies}
+        for c in self.member_of_companies:
+            if c.id not in all_companies:
+                all_companies[c.id] = c
+        
+        # Şirketleri ID'ye göre sıralayarak tutarlı bir liste döndür
+        return sorted(list(all_companies.values()), key=lambda c: c.id)
 
     class Config:
         from_attributes = True
 
-
-# -- Token Schemas (Bağımsızdır, sonda olabilir) --
+# -- Token ve Üye Ekleme Şemaları --
 class Token(BaseModel):
     access_token: str
     token_type: str
 
 class TokenData(BaseModel):
     email: Optional[EmailStr] = None
+    
+# YENİ: Üye ekleme isteği için
+class AddMemberRequest(BaseModel):
+    email: EmailStr
 
+# -- Dashboard Analitik Şemaları --
 class MonthlyEmission(BaseModel):
-    month: str  # Örn: "2024-04"
+    month: str
     total_co2e_kg: float
 
 class DashboardSummary(BaseModel):

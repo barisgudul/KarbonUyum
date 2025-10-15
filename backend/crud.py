@@ -25,7 +25,17 @@ def get_companies_by_owner(db: Session, owner_id: int):
     return db.query(models.Company).filter(models.Company.owner_id == owner_id).all()
 
 def create_user_company(db: Session, company: schemas.CompanyCreate, user_id: int):
-    db_company = models.Company(**company.model_dump(), owner_id=user_id)
+    # Find the owner object from the database
+    owner = db.query(models.User).filter(models.User.id == user_id).first()
+    if not owner:
+        return None # Or raise an exception
+
+    # Create the company instance
+    db_company = models.Company(**company.model_dump(), owner=owner)
+    
+    # Add the owner to the members list
+    db_company.members.append(owner)
+
     db.add(db_company)
     db.commit()
     db.refresh(db_company)
@@ -59,8 +69,14 @@ def get_dashboard_summary(db: Session, user_id: int):
     # Python 3.14/SQLite uyumluluğu için basit strftime kullandık.
 
     # Kullanıcının sahip olduğu tüm tesis ID'lerini al
-    facility_ids = db.query(models.Facility.id).join(models.Company).filter(models.Company.owner_id == user_id).subquery()
-
+    # Artık ÜYE olunan tüm şirketleri alıyor
+    facility_ids = (
+        db.query(models.Facility.id)
+        .join(models.Company)
+        .join(models.Company.members)
+        .filter(models.User.id == user_id)
+        .subquery()
+    )
     # Aylık emisyonları gruplayarak hesapla
     # PostgreSQL için: func.to_char(models.ActivityData.start_date, 'YYYY-MM')
     # SQLite/Genel için: func.strftime("%Y-%m", models.ActivityData.start_date)
@@ -130,4 +146,49 @@ def delete_activity_data(db: Session, data_id: int):
         return None
     db.delete(db_activity_data)
     db.commit()
+    return db_activity_data
+
+
+def update_company(db: Session, company_id: int, company_data: schemas.CompanyCreate):
+    db_company = get_company_by_id(db, company_id=company_id)
+    if not db_company:
+        return None
+    
+    # Gelen verilerle mevcut kaydı güncelle
+    db_company.name = company_data.name
+    db_company.tax_number = company_data.tax_number
+    
+    db.commit()
+    db.refresh(db_company)
+    return db_company
+
+def update_facility(db: Session, facility_id: int, facility_data: schemas.FacilityCreate):
+    db_facility = get_facility_by_id(db, facility_id=facility_id)
+    if not db_facility:
+        return None
+        
+    db_facility.name = facility_data.name
+    db_facility.city = facility_data.city
+    db_facility.address = facility_data.address
+    
+    db.commit()
+    db.refresh(db_facility)
+    return db_facility
+
+def update_activity_data(db: Session, data_id: int, activity_data: schemas.ActivityDataCreate, new_co2e_kg: float):
+    db_activity_data = get_activity_data_by_id(db, data_id=data_id)
+    if not db_activity_data:
+        return None
+        
+    db_activity_data.activity_type = activity_data.activity_type
+    db_activity_data.quantity = activity_data.quantity
+    db_activity_data.unit = activity_data.unit
+    db_activity_data.start_date = activity_data.start_date
+    db_activity_data.end_date = activity_data.end_date
+    
+    # ÖNEMLİ: Miktar değiştiği için karbon emisyonunu da yeniden hesaplanmış haliyle güncelliyoruz.
+    db_activity_data.calculated_co2e_kg = new_co2e_kg
+    
+    db.commit()
+    db.refresh(db_activity_data)
     return db_activity_data
