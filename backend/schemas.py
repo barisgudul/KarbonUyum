@@ -1,18 +1,25 @@
-# backend/schemas.py 
+# backend/schemas.py (Tamamen Güncellenmiş Hali)
 
 from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, EmailStr, Field, computed_field
 
-from models import ActivityType
+# Rol Enum'ını modellerden import ediyoruz
+from models import ActivityType, CompanyMemberRole
 
-# -- User Schemas (Önce UserBase tanımlanmalı) --
+# -- User Schemas --
 class UserBase(BaseModel):
     email: EmailStr
+    class Config:
+        from_attributes = True
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=72)
+
+# Üyeleri ve rollerini bir arada göstermek için yeni bir şema
+class CompanyMember(UserBase):
+    role: CompanyMemberRole
 
 # -- ActivityData Schemas --
 class ActivityDataBase(BaseModel):
@@ -57,33 +64,27 @@ class CompanyCreate(CompanyBase):
 class Company(CompanyBase):
     id: int
     owner_id: int
-    members: List[UserBase] = [] # YENİ: Üyeleri de göstereceğiz
+    # GÜNCELLEME: Artık üyeleri rolleriyle birlikte göstereceğiz
+    members: List[CompanyMember] = []
     facilities: List[Facility] = []
     class Config: from_attributes = True
 
-# -- User Şeması (Artık Company'yi kullanabilir) --
+# -- User Ana Şeması --
 class User(UserBase):
     id: int
     is_active: bool
     owned_companies: List[Company] = []
     member_of_companies: List[Company] = []
 
-    # YENİ: Bu 'computed_field', Pydantic'e 'companies' adında yeni bir alan oluşturmasını söyler.
-    # Bu alanın değeri, aşağıdaki fonksiyonun sonucudur.
     @computed_field
     @property
     def companies(self) -> List[Company]:
-        """Kullanıcının sahip olduğu ve üye olduğu tüm şirketleri birleştirir."""
         all_companies = {c.id: c for c in self.owned_companies}
         for c in self.member_of_companies:
             if c.id not in all_companies:
                 all_companies[c.id] = c
-        
-        # Şirketleri ID'ye göre sıralayarak tutarlı bir liste döndür
         return sorted(list(all_companies.values()), key=lambda c: c.id)
-
-    class Config:
-        from_attributes = True
+    class Config: from_attributes = True
 
 # -- Token ve Üye Ekleme Şemaları --
 class Token(BaseModel):
@@ -93,9 +94,10 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     email: Optional[EmailStr] = None
     
-# YENİ: Üye ekleme isteği için
+# GÜNCELLEME: Üye ekleme isteği artık rol de içeriyor
 class AddMemberRequest(BaseModel):
     email: EmailStr
+    role: CompanyMemberRole = CompanyMemberRole.data_entry
 
 # -- Dashboard Analitik Şemaları --
 class MonthlyEmission(BaseModel):

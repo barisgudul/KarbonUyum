@@ -24,21 +24,28 @@ def get_company_by_id(db: Session, company_id: int):
 def get_companies_by_owner(db: Session, owner_id: int):
     return db.query(models.Company).filter(models.Company.owner_id == owner_id).all()
 
+
 def create_user_company(db: Session, company: schemas.CompanyCreate, user_id: int):
-    # Find the owner object from the database
-    owner = db.query(models.User).filter(models.User.id == user_id).first()
-    if not owner:
-        return None # Or raise an exception
-
-    # Create the company instance
-    db_company = models.Company(**company.model_dump(), owner=owner)
-    
-    # Add the owner to the members list
-    db_company.members.append(owner)
-
+    # 1. Şirket nesnesini oluştur
+    db_company = models.Company(**company.model_dump(), owner_id=user_id)
     db.add(db_company)
+    
+    # 2. Veritabanına "flush" et. Bu, transaction'ı bitirmeden şirkete bir ID atanmasını sağlar.
+    db.flush()
+
+    # 3. Şimdi, ID'si belli olan şirkete, sahibini 'owner' rolüyle üye olarak ekle
+    # Doğrudan ara tabloya (association table) ekleme yapıyoruz.
+    insert_stmt = models.company_members_association.insert().values(
+        user_id=user_id,
+        company_id=db_company.id,
+        role=models.CompanyMemberRole.owner  # Rolü 'owner' olarak ata
+    )
+    db.execute(insert_stmt)
+
+    # 4. Tüm işlemleri veritabanına kaydet
     db.commit()
     db.refresh(db_company)
+    
     return db_company
 
 def create_company_facility(db: Session, facility: schemas.FacilityCreate, company_id: int):
@@ -179,16 +186,40 @@ def update_activity_data(db: Session, data_id: int, activity_data: schemas.Activ
     db_activity_data = get_activity_data_by_id(db, data_id=data_id)
     if not db_activity_data:
         return None
-        
+
     db_activity_data.activity_type = activity_data.activity_type
     db_activity_data.quantity = activity_data.quantity
     db_activity_data.unit = activity_data.unit
     db_activity_data.start_date = activity_data.start_date
     db_activity_data.end_date = activity_data.end_date
-    
+
     # ÖNEMLİ: Miktar değiştiği için karbon emisyonunu da yeniden hesaplanmış haliyle güncelliyoruz.
     db_activity_data.calculated_co2e_kg = new_co2e_kg
-    
+
     db.commit()
     db.refresh(db_activity_data)
     return db_activity_data
+
+
+def get_company_members_with_roles(db: Session, company_id: int):
+    members = db.query(
+        models.User,
+        models.company_members_association.c.role
+    ).join(
+        models.company_members_association,
+        models.User.id == models.company_members_association.c.user_id
+    ).filter(
+        models.company_members_association.c.company_id == company_id
+    ).all()
+    
+    # Sorgu sonucunu Pydantic modeline uygun hale getir
+    return [{"email": user.email, "role": role} for user, role in members]
+
+def add_member_to_company(db: Session, user: models.User, company: models.Company, role: models.CompanyMemberRole):
+    insert_stmt = models.company_members_association.insert().values(
+        user_id=user.id,
+        company_id=company.id,
+        role=role
+    )
+    db.execute(insert_stmt)
+    db.commit()

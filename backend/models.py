@@ -10,11 +10,21 @@ class ActivityType(str, enum.Enum):
     natural_gas = "natural_gas"
     diesel_fuel = "diesel_fuel"
 
+class CompanyMemberRole(str, enum.Enum):
+    owner = "owner"
+    admin = "admin"
+    data_entry = "data_entry"
+    viewer = "viewer"
+
+
+
 company_members_association = Table(
     'company_members',
     Base.metadata,
     Column('user_id', Integer, ForeignKey('users.id'), primary_key=True),
-    Column('company_id', Integer, ForeignKey('companies.id'), primary_key=True)
+    Column('company_id', Integer, ForeignKey('companies.id'), primary_key=True),
+    # YENİ: Üyenin rolünü tutacak olan sütun
+    Column('role', Enum(CompanyMemberRole), default=CompanyMemberRole.data_entry, nullable=False)
 )
 
 class User(Base):

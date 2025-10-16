@@ -29,8 +29,23 @@ export default function ActivityDataForm({ facilityId, onFormSubmit, initialData
 
   const [error, setError] = useState(null);
 
+  
+
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    let newFormData = { ...formData, [name]: value };
+
+    // Eğer aktivite türü değişiyorsa, varsayılan birimi ayarla
+    if (name === 'activity_type') {
+      if (value === 'electricity') {
+        newFormData.unit = 'kWh';
+      } else if (value === 'natural_gas') {
+        newFormData.unit = 'm3';
+      } else if (value === 'diesel_fuel') {
+        newFormData.unit = 'l'; // litre
+      }
+    }
+    setFormData(newFormData);
   };
 
   const handleSubmit = async (e) => {
@@ -62,8 +77,10 @@ export default function ActivityDataForm({ facilityId, onFormSubmit, initialData
         {initialData ? 'Aktivite Verisini Düzenle' : 'Yeni Aktivite Verisi Ekle'}
       </h5>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <select name="activity_type" value={formData.activity_type} onChange={handleChange} className="w-full px-2 py-1 border rounded">
+      <select name="activity_type" value={formData.activity_type} onChange={handleChange} className="w-full px-2 py-1 border rounded">
           <option value="electricity">Elektrik</option>
+          <option value="natural_gas">Doğal Gaz</option>
+          <option value="diesel_fuel">Dizel Yakıt</option>
         </select>
         <input type="number" name="quantity" value={formData.quantity} onChange={handleChange} placeholder="Tüketim Miktarı" required className="w-full px-2 py-1 border rounded" />
         <input type="text" name="unit" value={formData.unit} onChange={handleChange} placeholder="Birim (örn: kWh)" required className="w-full px-2 py-1 border rounded" />
