@@ -9,7 +9,9 @@ import CompanyForm from '../../components/CompanyForm';
 import FacilityForm from '../../components/FacilityForm';
 import ActivityDataForm from '../../components/ActivityDataForm';
 import SummaryPanel from '../../components/SummaryPanel';
-import MembersManager from '../../components/MembersManager'; // <-- YENİ
+import MembersManager from '../../components/MembersManager';
+import FinancialsForm from '../../components/FinancialsForm';
+import SuggestionsPanel from '../../components/SuggestionsPanel'; // <-- YENİ: Import et
 
 export default function DashboardPage() {
   const { user, loading, logout, fetchUser } = useAuth();
@@ -93,7 +95,8 @@ export default function DashboardPage() {
                   <p className="text-sm text-gray-600 mb-4">Vergi No: {company.tax_number || 'N/A'}</p>
                 </div>
                 <div className="flex items-center space-x-2 flex-shrink-0">
-                   {/* YENİ: Üyeleri Yönet Butonu */}
+                   {/* YENİ: Finansal Veriler Butonu */}
+                  <button onClick={() => toggleForm('financials', company.id)} className="px-3 py-1 text-sm bg-teal-600 text-white rounded hover:bg-teal-700">Finansallar</button>
                   <button onClick={() => toggleForm('members', company.id)} className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">Üyeler</button>
                   <button onClick={() => toggleForm('company_edit', company.id, company)} className="px-3 py-1 text-sm bg-yellow-500 text-white rounded hover:bg-yellow-600">Düzenle</button>
                   <button onClick={() => toggleForm('facility_new', company.id)} className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">{activeForm?.type === 'facility_new' && activeForm?.id === company.id ? 'Kapat' : '+ Tesis'}</button>
@@ -101,12 +104,18 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+              {/* YENİ: FinancialsForm'u koşullu olarak render et */}
+              {activeForm.type === 'financials' && activeForm.id === company.id && (<FinancialsForm company={company} onFormSubmit={handleDataChange} />)}
+
               {/* YENİ: MembersManager'ı koşullu olarak render et */}
               {activeForm.type === 'members' && activeForm.id === company.id && (<MembersManager company={company} onMemberChange={handleDataChange} />)}
-              
+
               {activeForm.type === 'company_edit' && activeForm.id === company.id && (<CompanyForm onFormSubmit={handleDataChange} initialData={activeForm.data} />)}
               {activeForm.type === 'facility_new' && activeForm.id === company.id && (<FacilityForm companyId={company.id} onFormSubmit={handleDataChange} />)}
-              
+
+              {/* YENİ: Öneri panelini buraya ekliyoruz */}
+              <SuggestionsPanel company={company} />
+
               <div className="mt-4 pl-4 border-l-2 space-y-4">
                 {company.facilities.map(facility => (
                   <div key={facility.id}>

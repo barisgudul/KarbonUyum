@@ -1,9 +1,11 @@
 # backend/crud.py
 from sqlalchemy.orm import Session
-from sqlalchemy import func # <-- YENİ
+from sqlalchemy import func 
 from datetime import datetime, date, timedelta 
 from fastapi import HTTPException
-import models, schemas, auth 
+import models, schemas, auth
+import suggestion_engine 
+from typing import Optional, List
 
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
@@ -122,6 +124,108 @@ def get_dashboard_summary(db: Session, user_id: int):
         "monthly_trend": monthly_trend
     }
 
+# -- Suggestion Parameter CRUD --
+
+def get_suggestion_parameter_by_key(db: Session, key: str) -> Optional[models.SuggestionParameter]:
+    return db.query(models.SuggestionParameter).filter(models.SuggestionParameter.key == key).first()
+
+def create_suggestion_parameter(db: Session, param: schemas.SuggestionParameterCreate) -> models.SuggestionParameter:
+    db_param = models.SuggestionParameter(**param.model_dump())
+    db.add(db_param)
+    db.commit()
+    db.refresh(db_param)
+    return db_param
+
+def update_suggestion_parameter(db: Session, key: str, param_data: schemas.SuggestionParameterUpdate) -> Optional[models.SuggestionParameter]:
+    db_param = get_suggestion_parameter_by_key(db, key)
+    if db_param:
+        db_param.value = param_data.value
+        if param_data.description is not None:
+            db_param.description = param_data.description
+        db.commit()
+        db.refresh(db_param)
+    return db_param
+
+def delete_suggestion_parameter(db: Session, key: str):
+    db_param = get_suggestion_parameter_by_key(db, key)
+    if db_param:
+        db.delete(db_param)
+        db.commit()
+    return db_param
+
+# -- Emission Factor CRUD --
+
+def get_emission_factor_by_key(db: Session, key: str) -> Optional[models.EmissionFactor]:
+    return db.query(models.EmissionFactor).filter(models.EmissionFactor.key == key).first()
+
+def get_all_emission_factors(db: Session) -> dict[str, models.EmissionFactor]:
+    """Veritabanındaki tüm emisyon faktörlerini bir sözlük olarak döndürür."""
+    factors = db.query(models.EmissionFactor).all()
+    return {f.key: f for f in factors}
+
+def create_emission_factor(db: Session, factor: schemas.EmissionFactorCreate) -> models.EmissionFactor:
+    db_factor = models.EmissionFactor(**factor.model_dump())
+    db.add(db_factor)
+    db.commit()
+    db.refresh(db_factor)
+    return db_factor
+
+def update_emission_factor(db: Session, key: str, factor_data: schemas.EmissionFactorUpdate) -> Optional[models.EmissionFactor]:
+    db_factor = get_emission_factor_by_key(db, key)
+    if db_factor:
+        update_data = factor_data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(db_factor, key, value)
+        db.commit()
+        db.refresh(db_factor)
+    return db_factor
+
+def delete_emission_factor(db: Session, key: str):
+    db_factor = get_emission_factor_by_key(db, key)
+    if db_factor:
+        db.delete(db_factor)
+        db.commit()
+    return db_factor
+
+# -- Sustainability Target CRUD --
+
+def create_target(db: Session, company_id: int, target: schemas.SustainabilityTargetCreate) -> models.SustainabilityTarget:
+    # Burada baseline_value'yu hesaplamak için bir servis çağrısı yapılabilir.
+    # Şimdilik None olarak bırakıyoruz.
+    db_target = models.SustainabilityTarget(
+        **target.model_dump(),
+        company_id=company_id,
+        baseline_value=None # TODO: Calculate baseline value
+    )
+    db.add(db_target)
+    db.commit()
+    db.refresh(db_target)
+    return db_target
+
+def get_company_targets(db: Session, company_id: int) -> List[models.SustainabilityTarget]:
+    return db.query(models.SustainabilityTarget).filter(models.SustainabilityTarget.company_id == company_id).all()
+
+def get_target(db: Session, target_id: int) -> Optional[models.SustainabilityTarget]:
+    return db.query(models.SustainabilityTarget).filter(models.SustainabilityTarget.id == target_id).first()
+
+def update_target(db: Session, target_id: int, target_data: schemas.SustainabilityTargetCreate) -> Optional[models.SustainabilityTarget]:
+    db_target = get_target(db, target_id)
+    if db_target:
+        update_data = target_data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(db_target, key, value)
+        db.commit()
+        db.refresh(db_target)
+    return db_target
+
+def delete_target(db: Session, target_id: int):
+    db_target = get_target(db, target_id)
+    if db_target:
+        db.delete(db_target)
+        db.commit()
+    return db_target
+
+
 def delete_company(db: Session, company_id: int):
     db_company = get_company_by_id(db, company_id=company_id)
     if not db_company:
@@ -223,3 +327,49 @@ def add_member_to_company(db: Session, user: models.User, company: models.Compan
     )
     db.execute(insert_stmt)
     db.commit()
+
+def upsert_company_financials(db: Session, company_id: int, financials_data: schemas.CompanyFinancialsCreate) -> models.CompanyFinancials:
+    """
+    Bir şirket için finansal verileri oluşturur veya günceller (Upsert).
+    """
+    # Mevcut bir kayıt var mı diye kontrol et
+    db_financials = db.query(models.CompanyFinancials).filter(models.CompanyFinancials.company_id == company_id).first()
+    
+    if db_financials:
+        # Varsa, güncelle
+        db_financials.avg_electricity_cost_kwh = financials_data.avg_electricity_cost_kwh
+        db_financials.avg_gas_cost_m3 = financials_data.avg_gas_cost_m3
+    else:
+        # Yoksa, yeni oluştur
+        db_financials = models.CompanyFinancials(
+            company_id=company_id,
+            **financials_data.model_dump()
+        )
+        db.add(db_financials)
+        
+    db.commit()
+    db.refresh(db_financials)
+    return db_financials
+
+
+def get_suggestions_for_company(db: Session, company_id: int) -> list[str]:
+    """
+    Bir şirket için kişiselleştirilmiş öneriler oluşturur.
+    """
+    # Şirketi, finansal bilgileriyle birlikte tek bir sorguda çek (eager loading)
+    from sqlalchemy.orm import joinedload
+
+    db_company = db.query(models.Company).options(
+        joinedload(models.Company.financials)
+    ).filter(models.Company.id == company_id).first()
+
+    if not db_company:
+        return ["Şirket bulunamadı."] # Hata durumu için bir mesaj
+
+    return suggestion_engine.generate_suggestions(company=db_company, db=db)
+
+
+def get_all_suggestion_parameters(db: Session) -> dict:
+    """Veritabanındaki tüm öneri parametrelerini bir sözlük olarak döndürür."""
+    params = db.query(models.SuggestionParameter).all()
+    return {p.key: p.value for p in params}

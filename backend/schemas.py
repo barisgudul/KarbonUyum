@@ -1,9 +1,11 @@
-# backend/schemas.py (Tamamen Güncellenmiş Hali)
+# backend/schemas.py 
 
 from datetime import date
 from typing import List, Optional
+import enum
 
 from pydantic import BaseModel, EmailStr, Field, computed_field
+import models
 
 # Rol Enum'ını modellerden import ediyoruz
 from models import ActivityType, CompanyMemberRole
@@ -53,6 +55,18 @@ class Facility(FacilityBase):
     activity_data: List[ActivityData] = []
     class Config: from_attributes = True
 
+# -- Financials Schemas --
+class CompanyFinancialsBase(BaseModel):
+    avg_electricity_cost_kwh: Optional[float] = None
+    avg_gas_cost_m3: Optional[float] = None
+
+class CompanyFinancialsCreate(CompanyFinancialsBase):
+    pass
+
+class CompanyFinancials(CompanyFinancialsBase):
+    company_id: int
+    class Config:
+        from_attributes = True
 # -- Company Schemas --
 class CompanyBase(BaseModel):
     name: str
@@ -60,15 +74,17 @@ class CompanyBase(BaseModel):
 
 class CompanyCreate(CompanyBase):
     pass
-
 class Company(CompanyBase):
     id: int
     owner_id: int
-    # GÜNCELLEME: Artık üyeleri rolleriyle birlikte göstereceğiz
     members: List[CompanyMember] = []
     facilities: List[Facility] = []
-    class Config: from_attributes = True
-
+    
+    # YENİ: financials alanını ekle
+    financials: Optional[CompanyFinancials] = None 
+    
+    class Config:
+        from_attributes = True
 # -- User Ana Şeması --
 class User(UserBase):
     id: int
@@ -108,3 +124,134 @@ class DashboardSummary(BaseModel):
     current_month_total: float
     previous_month_total: float
     monthly_trend: List[MonthlyEmission]
+
+# -- Suggestion Schemas --
+class SuggestionBase(BaseModel):
+    suggestion_type: str # Örn: "ges_investment"
+    short_title: str     # Örn: "Güneş Enerjisi Yatırımı"
+    description: str     # Öneri metni
+    class Config:
+        from_attributes = True
+
+class GESSuggestionDetails(BaseModel):
+    annual_electricity_kwh_estimated: float
+    avg_electricity_cost_kwh: float
+    ges_estimated_cost_per_kwp: float
+    ges_kwh_generation_per_kwp_annual: float
+
+class GESSuggestion(SuggestionBase):
+    suggestion_type: str = "ges_investment"
+    short_title: str = "Güneş Enerjisi Yatırımı"
+    estimated_annual_savings_tl: float
+    estimated_investment_tl: float
+    roi_years: float
+    required_kwp: float
+    calculation_details: GESSuggestionDetails
+
+class InsulationSuggestionDetails(BaseModel):
+    facility_surface_area_m2: float
+    avg_gas_cost_m3: float
+    city_heating_factor: float
+    insulation_avg_cost_per_m2: float
+    insulation_gas_savings_per_m2_annual_base: float
+
+class InsulationSuggestion(SuggestionBase):
+    suggestion_type: str = "insulation_investment"
+    short_title: str = "Bina Yalıtımı Yatırımı"
+    estimated_annual_gas_savings_m3: float
+    estimated_investment_tl: float
+    roi_years: float
+    calculation_details: InsulationSuggestionDetails
+
+# "Neden öneri yok?" durumları için yeni bir şema
+class InfoSuggestion(SuggestionBase):
+    suggestion_type: str = "information"
+    short_title: str = "Bilgilendirme"
+    reason_code: str # Örn: "insufficient_data", "low_consumption"
+    required_months: Optional[int] = None
+
+# Gelecekte eklenecek diğer öneri tipleri için de benzer modeller oluşturulabilir
+# class InsulationSuggestion(BaseSuggestionBase): ...
+
+# -- Suggestion Parameter Schemas --
+class SuggestionParameterBase(BaseModel):
+    key: str
+    value: float
+    description: Optional[str] = None
+
+class SuggestionParameterCreate(SuggestionParameterBase):
+    pass
+
+class SuggestionParameterUpdate(BaseModel):
+    value: float
+    description: Optional[str] = None
+
+class SuggestionParameter(SuggestionParameterBase):
+    class Config:
+        from_attributes = True
+
+class EmissionFactorBase(BaseModel):
+    key: str
+    value: float
+    unit: str
+    source: Optional[str] = None
+    year: Optional[int] = None
+    description: Optional[str] = None
+
+class EmissionFactorCreate(EmissionFactorBase):
+    pass
+
+class EmissionFactorUpdate(BaseModel):
+    value: Optional[float] = None
+    unit: Optional[str] = None
+    source: Optional[str] = None
+    year: Optional[int] = None
+    description: Optional[str] = None
+
+class EmissionFactor(EmissionFactorBase):
+    class Config:
+        from_attributes = True
+
+# -- Benchmarking Schemas --
+
+class CompanyIndustry(str, enum.Enum):
+    manufacturing = "manufacturing"
+    services = "services"
+    retail = "retail"
+    other = "other"
+
+class BenchmarkMetric(BaseModel):
+    metric_name: str # Örn: "kwh_per_m2_annual"
+    your_value: Optional[float]
+    industry_avg: Optional[float]
+    regional_avg: Optional[float]
+    unit: str # Örn: "kWh/m²"
+    description: Optional[str] = None
+
+class BenchmarkReport(BaseModel):
+    company_id: int
+    company_name: str
+    report_date: date
+    metrics: List[BenchmarkMetric]
+    message: Optional[str] = None
+
+# -- Target Schemas --
+
+class SustainabilityTargetBase(BaseModel):
+    target_metric: models.TargetMetricType
+    target_value: float
+    target_year: int
+    baseline_year: int
+    description: Optional[str] = None
+
+class SustainabilityTargetCreate(SustainabilityTargetBase):
+    pass
+
+class SustainabilityTarget(SustainabilityTargetBase):
+    id: int
+    company_id: int
+    baseline_value: Optional[float] = None
+    is_active: bool
+
+    class Config:
+        from_attributes = True

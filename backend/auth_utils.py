@@ -9,6 +9,14 @@ import models
 import auth
 from database import get_db
 
+def require_superuser(current_user: models.User = Depends(auth.get_current_user)):
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The user does not have superuser privileges"
+        )
+    return current_user
+
 def get_company_if_member(
     company_id: int, 
     db: Session = Depends(get_db), 
