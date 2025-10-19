@@ -10,6 +10,11 @@ class ActivityType(str, enum.Enum):
     natural_gas = "natural_gas"
     diesel_fuel = "diesel_fuel"
 
+class ScopeType(str, enum.Enum):
+    scope_1 = "scope_1"  # Doğrudan emisyonlar (doğalgaz, dizel yakıt)
+    scope_2 = "scope_2"  # Dolaylı emisyonlar (satın alınan elektrik)
+    scope_3 = "scope_3"  # Diğer dolaylı emisyonlar (tedarik zinciri)
+
 class CompanyMemberRole(str, enum.Enum):
     owner = "owner"
     admin = "admin"
@@ -63,7 +68,7 @@ class Company(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True, nullable=False)
     tax_number = Column(String, unique=True, index=True)
-    industry_type = Column(Enum(IndustryType), nullable=True)
+    industry_type = Column(Enum(IndustryType), nullable=True, index=True)  # YENİ: index=True (Benchmark sorgusu filtrelemesi)
     owner_id = Column(Integer, ForeignKey("users.id"))
 
     owner = relationship("User", back_populates="owned_companies")
@@ -79,10 +84,10 @@ class Facility(Base):
     __tablename__ = "facilities"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True, nullable=False)
-    city = Column(String)
+    city = Column(String, index=True)  # YENİ: index=True (Benchmark sorgusu şehir filtresi)
     address = Column(String)
     facility_type = Column(Enum(FacilityType), default=FacilityType.production)
-    surface_area_m2 = Column(Float, nullable=True) # Isıtılan/Soğutulan alan metrekare
+    surface_area_m2 = Column(Float, nullable=True, index=True)  # YENİ: index=True (Benchmark hesaplaması divide operasyonu)
     company_id = Column(Integer, ForeignKey("companies.id"))
     company = relationship("Company", back_populates="facilities")
     
@@ -103,8 +108,14 @@ class ActivityData(Base):
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
     
+    # GHG Protokolü uyumlu scope alanı
+    scope = Column(Enum(ScopeType), nullable=False)
+    
     # Hesaplama sonucu burada saklanacak
     calculated_co2e_kg = Column(Float)
+    
+    # YENİ: Fallback hesaplama işaretleyicisi (yasal şeffaflık için)
+    is_fallback_calculation = Column(Boolean, default=False, nullable=False, index=True)  # YENİ: index=True (Benchmark: sadece güvenilir veriler)
 
     facility = relationship("Facility", back_populates="activity_data")
 
@@ -140,11 +151,16 @@ class SustainabilityTarget(Base):
 
     company = relationship("Company", backref="sustainability_targets")
 
-class EmissionFactor(Base):
-    __tablename__ = "emission_factors"
-    key = Column(String, primary_key=True, index=True) # Örn: "electricity_grid_TUR", "natural_gas_residential_TUR"
-    value = Column(Float, nullable=False) # kg CO2e / birim (kWh, m3, litre)
-    unit = Column(String, nullable=False) # Örn: "kWh", "m3", "litre"
-    source = Column(String, nullable=True) # Örn: "TÜİK", "IEA"
-    year = Column(Integer, nullable=True) # Verinin ait olduğu yıl (isteğe bağlı)
-    description = Column(String, nullable=True)
+# ESKI: EmissionFactor MODEL - SILINDI (Climatiq API kullanılıyor)
+# Bu model, dahili emisyon faktörü yönetimini sağlamak için kullanılıyordu.
+# Climatiq API'ye geçişle beraber, artık gerekli değildir.
+# Arşiv: backend/archive/models_EmissionFactor_v1.py
+#
+# class EmissionFactor(Base):
+#     __tablename__ = "emission_factors"
+#     key = Column(String, primary_key=True, index=True)
+#     value = Column(Float, nullable=False)
+#     unit = Column(String, nullable=False)
+#     source = Column(String, nullable=True)
+#     year = Column(Integer, nullable=True)
+#     description = Column(String, nullable=True)

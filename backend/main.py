@@ -3,9 +3,15 @@ import logging
 from datetime import timedelta
 from typing import List, Union
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Depends, FastAPI, HTTPException, status, Response
+from fastapi import Depends, FastAPI, HTTPException, status, Response, UploadFile, File, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from fastapi.responses import PlainTextResponse
+
+# YENİ: Rate Limiting (API maliyet kontrolü için)
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Gerekli Kütüphaneler
 
@@ -17,10 +23,15 @@ import schemas
 from database import get_db
 import auth_utils 
 from carbon_calculator import get_calculator, CarbonCalculator
+# DEPRECATED: Eski dahili hesaplama servisi arşivlendi
+# from services.calculation_service import CalculationService, get_calculation_service
+# YENİ: Climatiq API tabanlı hesaplama servisi
+from services.climatiq_service import ClimatiqService, get_climatiq_service
+from services.benchmarking_service import BenchmarkingService
+from csv_handler import CSVProcessor, get_csv_template
 from fastapi import APIRouter # import APIRouter
 from sqladmin import Admin, ModelView
 from database import engine
-from backend.services.benchmarking_service import BenchmarkingService
 
 # --- Loglama Yapılandırması ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -28,7 +39,12 @@ logger = logging.getLogger(__name__)
 # -----------------------------
 
 
-app = FastAPI(title="KarbonUyum API", version="0.4.0") # Sürüm güncellendi
+app = FastAPI(title="KarbonUyum API", version="0.5.0") # Sürüm güncellendi: Rate limiting ve Climatiq
+
+# YENİ: Rate limiter yapılandırması
+limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 admin = Admin(app, engine)
 
@@ -39,13 +55,14 @@ class UserAdmin(ModelView, model=models.User):
 class SuggestionParameterAdmin(ModelView, model=models.SuggestionParameter):
     column_list = [models.SuggestionParameter.key, models.SuggestionParameter.value, models.SuggestionParameter.description]
 
-class EmissionFactorAdmin(ModelView, model=models.EmissionFactor):
-    column_list = [models.EmissionFactor.key, models.EmissionFactor.value, models.EmissionFactor.unit, models.EmissionFactor.source, models.EmissionFactor.year]
+# ESKI: EmissionFactorAdmin - SILINDI (Climatiq API kullanılıyor)
+# class EmissionFactorAdmin(ModelView, model=models.EmissionFactor):
+#     column_list = [...]
 
 # Modelleri admin paneline ekleyin
 admin.add_view(UserAdmin)
 admin.add_view(SuggestionParameterAdmin)
-admin.add_view(EmissionFactorAdmin)
+# ESKI: admin.add_view(EmissionFactorAdmin) - SILINDU
 
 # Yeni bir router oluşturun, böylece yönetici endpoint'leri ayrı tutulabilir
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -92,47 +109,6 @@ def delete_param(
         raise HTTPException(status_code=404, detail="Parameter not found")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-
-@admin_router.post("/emission-factors/", response_model=schemas.EmissionFactor, status_code=status.HTTP_201_CREATED)
-def create_emission_factor_api(
-    factor: schemas.EmissionFactorCreate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth_utils.require_superuser)
-):
-    db_factor = crud.get_emission_factor_by_key(db, key=factor.key)
-    if db_factor:
-        raise HTTPException(status_code=400, detail="Emission factor with this key already exists")
-    return crud.create_emission_factor(db=db, factor=factor)
-
-@admin_router.get("/emission-factors/", response_model=List[schemas.EmissionFactor])
-def read_emission_factors_api(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth_utils.require_superuser)
-):
-    return db.query(models.EmissionFactor).all()
-
-@admin_router.put("/emission-factors/{key}", response_model=schemas.EmissionFactor)
-def update_emission_factor_api(
-    key: str,
-    factor: schemas.EmissionFactorUpdate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth_utils.require_superuser)
-):
-    db_factor = crud.update_emission_factor(db=db, key=key, factor_data=factor)
-    if not db_factor:
-        raise HTTPException(status_code=404, detail="Emission factor not found")
-    return db_factor
-
-@admin_router.delete("/emission-factors/{key}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_emission_factor_api(
-    key: str,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth_utils.require_superuser)
-):
-    db_factor = crud.delete_emission_factor(db=db, key=key)
-    if not db_factor:
-        raise HTTPException(status_code=404, detail="Emission factor not found")
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 # --- Sustainability Target Endpoints ---
 
@@ -274,30 +250,53 @@ def add_company_member(
 # backend/main.py içerisindeki fonksiyon
 
 @app.post("/facilities/{facility_id}/activity-data/", response_model=schemas.ActivityData, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")  # Climatiq API maliyet koruması
 def create_activity_data_for_facility(
+    request: Request,
     facility_id: int,
     activity_data: schemas.ActivityDataCreate,
+    calculation_year: int = None,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
-    calculator: CarbonCalculator = Depends(get_calculator)
+    current_user: models.User = Depends(auth.get_current_user)
 ):
+    """
+    Bir tesise yeni aktivite verisi ekler.
+    
+    Args:
+        facility_id: Tesisin ID'si
+        activity_data: Aktivite verisi
+        calculation_year: Hesaplama için kullanılacak yıl (opsiyonel, varsayılan: mevcut yıl)
+    """
     db_facility = crud.get_facility_by_id(db, facility_id=facility_id)
     if not db_facility:
-        raise HTTPException(status_code=404, detail="Facility not found")
+        raise HTTPException(status_code=404, detail="Tesis bulunamadı")
 
     auth_utils.check_user_role(db_facility.company.id, db, current_user, allowed_roles=[
-        models.CompanyMemberRole.admin, models.CompanyMemberRole.data_entry
+        models.CompanyMemberRole.admin, models.CompanyMemberRole.data_entry, models.CompanyMemberRole.owner
     ])
 
-    # Tüm karmaşık mantık artık bu tek satırda!
-    calculated_co2e_kg = calculator.calculate_co2e(activity_data)
+    # YENİ: Climatiq API ile hesaplama
+    calc_service = ClimatiqService(year=calculation_year)
+    calculation_result = calc_service.calculate_for_activity(activity_data)
 
-    return crud.create_facility_activity_data(
-        db=db,
-        activity_data=activity_data,
+    # Veritabanına kaydet (scope ve fallback bilgisi ile)
+    db_activity_data = models.ActivityData(
         facility_id=facility_id,
-        co2e_kg=calculated_co2e_kg
+        activity_type=activity_data.activity_type,
+        quantity=activity_data.quantity,
+        unit=activity_data.unit,
+        start_date=activity_data.start_date,
+        end_date=activity_data.end_date,
+        scope=calculation_result.scope,
+        calculated_co2e_kg=calculation_result.total_co2e_kg,
+        is_fallback_calculation=calculation_result.is_fallback  # Yasal şeffaflık
     )
+    
+    db.add(db_activity_data)
+    db.commit()
+    db.refresh(db_activity_data)
+    
+    return db_activity_data
 
 @app.put("/companies/{company_id}", response_model=schemas.Company)
 def update_company(company_id: int, company: schemas.CompanyCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
@@ -322,25 +321,49 @@ def update_facility(facility_id: int, facility: schemas.FacilityCreate, db: Sess
 
 
 @app.put("/activity-data/{data_id}", response_model=schemas.ActivityData)
+@limiter.limit("30/minute")  # Climatiq API maliyet koruması
 def update_activity_data(
+    request: Request,
     data_id: int,
     activity_data: schemas.ActivityDataCreate,
+    calculation_year: int = None,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
-    calculator: CarbonCalculator = Depends(get_calculator)
+    current_user: models.User = Depends(auth.get_current_user)
 ):
+    """
+    Mevcut bir aktivite verisini günceller.
+    
+    Args:
+        data_id: Aktivite verisinin ID'si
+        activity_data: Yeni aktivite verisi
+        calculation_year: Hesaplama için kullanılacak yıl (opsiyonel, varsayılan: mevcut yıl)
+    """
     db_data = crud.get_activity_data_by_id(db, data_id=data_id)
     if not db_data:
-        raise HTTPException(status_code=404, detail="Activity data not found")
+        raise HTTPException(status_code=404, detail="Aktivite verisi bulunamadı")
 
     auth_utils.check_user_role(db_data.facility.company.id, db, current_user, allowed_roles=[
-        models.CompanyMemberRole.admin, models.CompanyMemberRole.data_entry
+        models.CompanyMemberRole.admin, models.CompanyMemberRole.data_entry, models.CompanyMemberRole.owner
     ])
 
-    # Tüm karmaşık mantık artık bu tek satırda!
-    calculated_co2e_kg = calculator.calculate_co2e(activity_data)
+    # YENİ: Climatiq API ile hesaplama
+    calc_service = ClimatiqService(year=calculation_year)
+    calculation_result = calc_service.calculate_for_activity(activity_data)
 
-    return crud.update_activity_data(db=db, data_id=data_id, activity_data=activity_data, new_co2e_kg=calculated_co2e_kg)
+    # Verileri güncelle
+    db_data.activity_type = activity_data.activity_type
+    db_data.quantity = activity_data.quantity
+    db_data.unit = activity_data.unit
+    db_data.start_date = activity_data.start_date
+    db_data.end_date = activity_data.end_date
+    db_data.scope = calculation_result.scope
+    db_data.calculated_co2e_kg = calculation_result.total_co2e_kg
+    db_data.is_fallback_calculation = calculation_result.is_fallback  # Yasal şeffaflık
+    
+    db.commit()
+    db.refresh(db_data)
+    
+    return db_data
 
 @app.get("/dashboard/summary", response_model=schemas.DashboardSummary)
 def get_summary_for_dashboard(
@@ -441,12 +464,125 @@ def get_company_suggestions(
 
     return crud.get_suggestions_for_company(db=db, company_id=company_id)
 
-@app.get("/companies/{company_id}/benchmark-report", response_model=schemas.BenchmarkReport)
+@app.get("/companies/{company_id}/benchmark-report", response_model=schemas.BenchmarkReportResponse)
 def get_benchmark_report(
     company_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
+    """
+    Bir şirket için benchmark raporu döndürür.
+    
+    Şirketin aynı sektör ve şehirdeki diğer şirketlerle karşılaştırmasını yapır.
+    - En az 3 karşılaştırılabilir şirket gereklidir (anonimlik için)
+    - Yeterli veri yoksa açıklayıcı mesaj döndürür
+    - Fallback hesaplamaları hariç tutar (güvenilir veriler kullanır)
+    """
+    # Kullanıcının bu şirkete erişimi olup olmadığını kontrol et
     company = auth_utils.get_company_if_member(company_id, db, current_user)
+    
+    # Benchmarking servisi kullanarak raporu hesapla
     benchmarking_service = BenchmarkingService(db)
-    return benchmarking_service.generate_benchmark_report(company)
+    report = benchmarking_service.calculate_benchmark_metrics(company_id)
+    
+    # Raporu response şemasına dönüştür
+    metrics_response = [
+        schemas.BenchmarkMetricResponse(
+            metric_name=metric.metric_name,
+            company_value=round(metric.company_value, 2),
+            sector_avg=round(metric.sector_avg, 2),
+            unit=metric.unit,
+            efficiency_ratio=round(metric.efficiency_ratio, 1),
+            is_better=metric.is_better,
+            difference_percent=round(metric.difference_percent, 1)
+        )
+        for metric in report.metrics
+    ]
+    
+    return schemas.BenchmarkReportResponse(
+        company_id=report.company_id,
+        company_name=report.company_name,
+        industry_type=report.industry_type,
+        city=report.city,
+        metrics=metrics_response,
+        comparable_companies_count=report.comparable_companies_count,
+        data_available=report.data_available,
+        message=report.message
+    )
+
+# --- CSV Upload Endpoints ---
+
+@app.get("/csv-template/activity-data", response_class=PlainTextResponse)
+def download_csv_template():
+    """
+    Aktivite verisi yüklemek için CSV şablonunu indirir.
+    """
+    return get_csv_template()
+
+@app.post("/facilities/{facility_id}/upload-csv", response_model=schemas.CSVUploadResult)
+@limiter.limit("10/hour")  # CSV yükleme için daha sıkı limit (çok satır = çok API call)
+async def upload_activity_data_csv(
+    request: Request,
+    facility_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Bir tesise ait aktivite verilerini CSV dosyasından toplu olarak yükler.
+    
+    CSV Formatı:
+    aktivite_tipi,miktar,birim,baslangic_tarihi,bitis_tarihi
+    electricity,1500,kWh,2024-01-01,2024-01-31
+    
+    İzin verilen aktivite tipleri: electricity, natural_gas, diesel_fuel
+    Tarih formatı: YYYY-MM-DD
+    """
+    # Tesis kontrolü ve yetki kontrolü
+    db_facility = crud.get_facility_by_id(db, facility_id=facility_id)
+    if not db_facility:
+        raise HTTPException(status_code=404, detail="Tesis bulunamadı")
+    
+    # Kullanıcının bu tesise veri ekleme yetkisi var mı?
+    auth_utils.check_user_role(
+        db_facility.company.id,
+        db,
+        current_user,
+        allowed_roles=[models.CompanyMemberRole.admin, models.CompanyMemberRole.data_entry, models.CompanyMemberRole.owner]
+    )
+    
+    # Dosya uzantısı kontrolü
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(
+            status_code=400,
+            detail="Sadece .csv uzantılı dosyalar yüklenebilir"
+        )
+    
+    # Dosya boyutu kontrolü (5MB limit)
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:  # 5MB
+        raise HTTPException(
+            status_code=400,
+            detail="Dosya boyutu 5MB'dan büyük olamaz"
+        )
+    
+    # CSV işleme
+    processor = CSVProcessor(db, facility_id)
+    try:
+        result = processor.process_csv_file(content)
+        
+        # Eğer en az bir satır başarılıysa commit et
+        if result.successful_rows > 0:
+            processor.commit()
+        else:
+            processor.rollback()
+        
+        return result
+        
+    except Exception as e:
+        processor.rollback()
+        logger.error(f"CSV yükleme hatası: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"CSV işleme sırasında bir hata oluştu: {str(e)}"
+        )

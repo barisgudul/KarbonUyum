@@ -54,8 +54,15 @@ class GESSuggestionStrategy(BaseSuggestionStrategy):
                 all_suggestions.append(info)
                 continue # Bu tesis için tüketim düşük, sonrakine geç
 
-            # ROI hesaplamaları (tesis bazında)
-            required_kwp = (annual_electricity_kwh_estimated * ges_config.get("ges_annual_savings_factor", 0.9)) / ges_config.get("ges_kwh_generation_per_kwp_annual", 1350)
+            # Şehir bazlı güneşlenme faktörü al
+            city_key = f"city_factor_{facility.city.lower()}" if facility.city else "city_factor_default"
+            city_ges_factor = ges_config.get(city_key, ges_config.get("city_factor_default", 1.0))
+            
+            # ROI hesaplamaları (tesis bazında, şehir faktörü ile ayarlanmış)
+            base_kwh_per_kwp = ges_config.get("ges_kwh_generation_per_kwp_annual", 1350)
+            adjusted_kwh_per_kwp = base_kwh_per_kwp * city_ges_factor  # Şehre göre ayarla
+            
+            required_kwp = (annual_electricity_kwh_estimated * ges_config.get("ges_annual_savings_factor", 0.9)) / adjusted_kwh_per_kwp
             estimated_ges_cost = required_kwp * ges_config.get("ges_estimated_cost_per_kwp", 25000.0)
             annual_cost_before = annual_electricity_kwh_estimated * financials.avg_electricity_cost_kwh
             annual_savings = annual_cost_before * ges_config.get("ges_annual_savings_factor", 0.9)
@@ -63,16 +70,29 @@ class GESSuggestionStrategy(BaseSuggestionStrategy):
 
             if roi_years <= ges_config.get("ges_max_roi_years", 10):
                 savings_percentage = ges_config.get('ges_annual_savings_factor', 0.9) * 100
+                city_name = facility.city if facility.city else "bölgeniz"
+                
+                # Şehir faktörüne göre açıklama ekle
+                if city_ges_factor > 1.1:
+                    solar_note = f"{city_name}, yüksek güneşlenme potansiyeline sahip olduğundan, GES yatırımı için çok uygun bir konumdadır."
+                elif city_ges_factor > 1.0:
+                    solar_note = f"{city_name}, iyi güneşlenme potansiyeline sahiptir."
+                elif city_ges_factor < 0.9:
+                    solar_note = f"{city_name}, ortalama altı güneşlenme potansiyeline sahiptir, ancak yine de GES yatırımı finansal olarak cazip olabilir."
+                else:
+                    solar_note = f"{city_name}, ortalama güneşlenme potansiyeline sahiptir."
+                
                 description_text = (
                     f"'{facility.name}' adlı tesisiniz için tahmin edilen yıllık ~{annual_electricity_kwh_estimated:,.0f} kWh elektrik tüketiminize uygun, "
-                    f"yaklaşık {required_kwp:.1f} kWp gücünde bir GES yatırımı ile maliyetlerinizi ~%{savings_percentage:.0f} oranında düşürebilirsiniz."
+                    f"yaklaşık {required_kwp:.1f} kWp gücünde bir GES yatırımı ile maliyetlerinizi ~%{savings_percentage:.0f} oranında düşürebilirsiniz. "
+                    f"{solar_note} (Bölgesel üretim faktörü: {city_ges_factor:.2f}x)"
                 )
                 
                 details = schemas.GESSuggestionDetails(
                     annual_electricity_kwh_estimated=annual_electricity_kwh_estimated,
                     avg_electricity_cost_kwh=financials.avg_electricity_cost_kwh,
                     ges_estimated_cost_per_kwp=ges_config.get("ges_estimated_cost_per_kwp", 25000.0),
-                    ges_kwh_generation_per_kwp_annual=ges_config.get("ges_kwh_generation_per_kwp_annual", 1350)
+                    ges_kwh_generation_per_kwp_annual=adjusted_kwh_per_kwp  # Ayarlanmış değeri kullan
                 )
 
                 suggestion_object = schemas.GESSuggestion(

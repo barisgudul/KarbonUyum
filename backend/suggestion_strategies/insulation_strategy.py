@@ -40,13 +40,13 @@ class InsulationStrategy(BaseSuggestionStrategy):
 
             area = facility.surface_area_m2
             
-            # Şehir için bir faktör al, bulunamazsa varsayılan 1.0 kullan
-            city_key = f"city_factor_{facility.city.lower()}" if facility.city else "city_factor_istanbul"
-            city_factor = params.get(city_key, 1.0)
+            # Şehir için ısıtma faktörü al, bulunamazsa varsayılan 1.0 kullan
+            city_key = f"city_heating_factor_{facility.city.lower()}" if facility.city else "city_heating_factor_default"
+            city_heating_factor = params.get(city_key, params.get("city_heating_factor_default", 1.0))
 
             savings_per_m2_base = params.get('insulation_gas_savings_per_m2_annual', 8.0)
-            # Tasarrufu şehir faktörü ile ayarla
-            adjusted_savings_per_m2 = savings_per_m2_base * city_factor
+            # Tasarrufu şehir ısıtma faktörü ile ayarla
+            adjusted_savings_per_m2 = savings_per_m2_base * city_heating_factor
 
             cost_per_m2 = params.get('insulation_avg_cost_per_m2', 1500.0)
             
@@ -56,17 +56,29 @@ class InsulationStrategy(BaseSuggestionStrategy):
             
             roi_years = estimated_investment / annual_tl_savings if annual_tl_savings > 0 else float('inf')
 
-            if roi_years <= params.get('insulation_max_roi_years', 12): # Yalıtım için ayrı bir parametre
+            if roi_years <= params.get('insulation_max_roi_years', 12):
+                city_name = facility.city if facility.city else "bölgeniz"
+                
+                # Isıtma faktörüne göre açıklama ekle
+                if city_heating_factor > 1.2:
+                    climate_note = f"{city_name}, soğuk iklime sahip olduğundan, yalıtım yatırımı özellikle yüksek tasarruf sağlayacaktır."
+                elif city_heating_factor > 1.0:
+                    climate_note = f"{city_name}, soğuk kış aylarına sahip olduğundan, yalıtım yatırımı iyi bir tasarruf sağlayacaktır."
+                elif city_heating_factor < 0.8:
+                    climate_note = f"{city_name}, ılıman iklime sahip olduğundan, yalıtım tasarrufu daha sınırlı olabilir."
+                else:
+                    climate_note = f"{city_name} için iklim koşulları dikkate alınarak hesaplanmıştır."
+                
                 description_text = (
                     f"'{facility.name}' adlı {area:,.0f} m²'lik ofisinizde yapılacak bir yalıtım yatırımı ile "
                     f"yıllık doğal gaz tüketiminizde yaklaşık {annual_gas_savings:,.0f} m³ tasarruf sağlayabilirsiniz. "
                     f"Bu, mevcut maliyetlerle yılda yaklaşık {annual_tl_savings:,.2f} TL tasarruf anlamına gelmektedir. "
-                    f"(Not: Tasarruf tahmini, tesisin bulunduğu '{facility.city}' şehri için bölgesel iklim verileriyle ayarlanmıştır.)"
+                    f"{climate_note} (Bölgesel ısıtma faktörü: {city_heating_factor:.2f}x)"
                 )
                 details = schemas.InsulationSuggestionDetails(
                     facility_surface_area_m2=area,
                     avg_gas_cost_m3=self.company.financials.avg_gas_cost_m3,
-                    city_heating_factor=city_factor,
+                    city_heating_factor=city_heating_factor,
                     insulation_avg_cost_per_m2=cost_per_m2,
                     insulation_gas_savings_per_m2_annual_base=savings_per_m2_base
                 )

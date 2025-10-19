@@ -8,7 +8,7 @@ from pydantic import BaseModel, EmailStr, Field, computed_field
 import models
 
 # Rol Enum'ını modellerden import ediyoruz
-from models import ActivityType, CompanyMemberRole
+from models import ActivityType, CompanyMemberRole, ScopeType
 
 # -- User Schemas --
 class UserBase(BaseModel):
@@ -32,12 +32,33 @@ class ActivityDataBase(BaseModel):
     end_date: date
 
 class ActivityDataCreate(ActivityDataBase):
-    pass
+    @field_validator('quantity')
+    @classmethod
+    def validate_quantity(cls, v):
+        if v <= 0:
+            raise ValueError('Miktar pozitif olmalıdır')
+        return v
+    
+    @field_validator('end_date')
+    @classmethod
+    def validate_dates(cls, v, info):
+        if 'start_date' in info.data and v < info.data['start_date']:
+            raise ValueError('Bitiş tarihi başlangıç tarihinden önce olamaz')
+        return v
+    
+    @field_validator('end_date')
+    @classmethod
+    def validate_date_not_future(cls, v):
+        if v > date.today():
+            raise ValueError('Gelecek tarihli veri girilemez')
+        return v
 
 class ActivityData(ActivityDataBase):
     id: int
     facility_id: int
+    scope: ScopeType
     calculated_co2e_kg: Optional[float] = None
+    is_fallback_calculation: bool = False  # Yasal şeffaflık için
     class Config: from_attributes = True
 
 # -- Facility Schemas --
@@ -45,9 +66,15 @@ class FacilityBase(BaseModel):
     name: str
     city: Optional[str] = None
     address: Optional[str] = None
+    surface_area_m2: Optional[float] = None
 
 class FacilityCreate(FacilityBase):
-    pass
+    @field_validator('surface_area_m2')
+    @classmethod
+    def validate_surface_area(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError('Yüzey alanı pozitif olmalıdır')
+        return v
 
 class Facility(FacilityBase):
     id: int
@@ -61,7 +88,12 @@ class CompanyFinancialsBase(BaseModel):
     avg_gas_cost_m3: Optional[float] = None
 
 class CompanyFinancialsCreate(CompanyFinancialsBase):
-    pass
+    @field_validator('avg_electricity_cost_kwh', 'avg_gas_cost_m3')
+    @classmethod
+    def validate_costs(cls, v):
+        if v is not None and v < 0:
+            raise ValueError('Maliyet negatif olamaz')
+        return v
 
 class CompanyFinancials(CompanyFinancialsBase):
     company_id: int
@@ -120,10 +152,18 @@ class MonthlyEmission(BaseModel):
     month: str
     total_co2e_kg: float
 
+class MonthlyEmissionByScope(BaseModel):
+    month: str
+    scope_1_co2e_kg: float
+    scope_2_co2e_kg: float
+    total_co2e_kg: float
+
 class DashboardSummary(BaseModel):
+    current_month_scope_1: float
+    current_month_scope_2: float
     current_month_total: float
     previous_month_total: float
-    monthly_trend: List[MonthlyEmission]
+    monthly_trend: List[MonthlyEmissionByScope]
 
 # -- Suggestion Schemas --
 class SuggestionBase(BaseModel):
@@ -190,27 +230,27 @@ class SuggestionParameter(SuggestionParameterBase):
     class Config:
         from_attributes = True
 
-class EmissionFactorBase(BaseModel):
-    key: str
-    value: float
-    unit: str
-    source: Optional[str] = None
-    year: Optional[int] = None
-    description: Optional[str] = None
-
-class EmissionFactorCreate(EmissionFactorBase):
-    pass
-
-class EmissionFactorUpdate(BaseModel):
-    value: Optional[float] = None
-    unit: Optional[str] = None
-    source: Optional[str] = None
-    year: Optional[int] = None
-    description: Optional[str] = None
-
-class EmissionFactor(EmissionFactorBase):
-    class Config:
-        from_attributes = True
+# ESKI: EmissionFactor SCHEMAS - SILINDI (Climatiq API kullanılıyor)
+# Dahili emisyon faktörü yönetimi için kullanılan Pydantic modelleri
+# Climatiq API'ye geçişle beraber artık gerekli değildir.
+#
+# class EmissionFactorBase(BaseModel):
+#     key: str
+#     value: float
+#     unit: str
+#     source: Optional[str] = None
+#     year: Optional[int] = None
+#     description: Optional[str] = None
+#
+# class EmissionFactorCreate(EmissionFactorBase):
+#     pass
+#
+# class EmissionFactorUpdate(BaseModel):
+#     ...
+#
+# class EmissionFactor(EmissionFactorBase):
+#     class Config:
+#         from_attributes = True
 
 # -- Benchmarking Schemas --
 
@@ -255,3 +295,54 @@ class SustainabilityTarget(SustainabilityTargetBase):
 
     class Config:
         from_attributes = True
+
+# -- Emission Calculation Result Schema --
+class EmissionCalculationResult(BaseModel):
+    total_co2e_kg: float
+    scope: ScopeType
+    emission_factor_used: str
+    emission_factor_value: float
+    calculation_year: int
+    is_fallback: bool = False  # API erişilemediğinde true
+
+# -- CSV Upload Schemas --
+class ActivityDataCSVRow(BaseModel):
+    row_number: int
+    activity_type: str
+    quantity: float
+    unit: str
+    start_date: str
+    end_date: str
+    error: Optional[str] = None
+    success: bool = True
+
+class CSVUploadResult(BaseModel):
+    total_rows: int
+    successful_rows: int
+    failed_rows: int
+    results: List[ActivityDataCSVRow]
+    message: str
+
+
+# YENİ: Benchmarking Şemaları
+class BenchmarkMetricResponse(BaseModel):
+    """Benchmark metriki - API response"""
+    metric_name: str
+    company_value: float
+    sector_avg: float
+    unit: str
+    efficiency_ratio: float  # sector_avg / company_value * 100
+    is_better: bool  # Şirket sektörden daha iyi mi?
+    difference_percent: float  # %18 daha verimli vs %10 daha az verimli
+
+
+class BenchmarkReportResponse(BaseModel):
+    """Benchmark raporu - API response"""
+    company_id: int
+    company_name: str
+    industry_type: str
+    city: str
+    metrics: List[BenchmarkMetricResponse] = []
+    comparable_companies_count: int
+    data_available: bool  # Yeterli veri var mı?
+    message: str  # "Yeterli veri yok", "3 firma ile karşılaştırıldı", vb.

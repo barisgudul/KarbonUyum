@@ -74,11 +74,10 @@ def get_facility_by_id(db: Session, facility_id: int):
 
 
 def get_dashboard_summary(db: Session, user_id: int):
-    # NOT: SQLite/PostgreSQL uyumluluğu için `strftime` yerine `to_char` veya `EXTRACT` kullanmak gerekebilir.
-    # Python 3.14/SQLite uyumluluğu için basit strftime kullandık.
-
-    # Kullanıcının sahip olduğu tüm tesis ID'lerini al
-    # Artık ÜYE olunan tüm şirketleri alıyor
+    """
+    Kullanıcının dashboard özet bilgilerini scope bazlı olarak döndürür.
+    """
+    # Kullanıcının üye olduğu tüm şirketlerin tesis ID'lerini al
     facility_ids = (
         db.query(models.Facility.id)
         .join(models.Company)
@@ -86,41 +85,69 @@ def get_dashboard_summary(db: Session, user_id: int):
         .filter(models.User.id == user_id)
         .subquery()
     )
-    # Aylık emisyonları gruplayarak hesapla
-    # PostgreSQL için: func.to_char(models.ActivityData.start_date, 'YYYY-MM')
-    # SQLite/Genel için: func.strftime("%Y-%m", models.ActivityData.start_date)
     
-    # Platform bağımsızlığı için denenen basit bir aylık gruplama (eğer hata verirse PostgreSQL'e özgü `to_char` kullanırız)
+    # Aylık emisyonları scope bazında gruplayarak hesapla
     monthly_trend_query = (
         db.query(
             func.to_char(models.ActivityData.start_date, 'YYYY-MM').label("month"),
-            func.sum(models.ActivityData.calculated_co2e_kg).label("total_co2e_kg"),
+            models.ActivityData.scope,
+            func.sum(models.ActivityData.calculated_co2e_kg).label("co2e_kg"),
         )
         .filter(models.ActivityData.facility_id.in_(facility_ids))
-        .group_by("month")
+        .group_by("month", models.ActivityData.scope)
         .order_by("month")
         .all()
     )
     
-    # Sorgu sonucunu Pydantic modeline uygun hale getir
-    monthly_trend = [{"month": row.month, "total_co2e_kg": row.total_co2e_kg} for row in monthly_trend_query]
-
-    # Mevcut ve önceki ay toplamlarını bul
+    # Verileri ay bazında gruplayarak scope ayrımı yap
+    monthly_data = {}
+    for row in monthly_trend_query:
+        month = row.month
+        scope = row.scope
+        co2e_kg = row.co2e_kg or 0.0
+        
+        if month not in monthly_data:
+            monthly_data[month] = {
+                "month": month,
+                "scope_1_co2e_kg": 0.0,
+                "scope_2_co2e_kg": 0.0,
+                "total_co2e_kg": 0.0
+            }
+        
+        if scope == models.ScopeType.scope_1:
+            monthly_data[month]["scope_1_co2e_kg"] = co2e_kg
+        elif scope == models.ScopeType.scope_2:
+            monthly_data[month]["scope_2_co2e_kg"] = co2e_kg
+        
+        monthly_data[month]["total_co2e_kg"] += co2e_kg
+    
+    # Aylara göre sıralı liste oluştur
+    monthly_trend = sorted(monthly_data.values(), key=lambda x: x["month"])
+    
+    # Mevcut ve önceki ay toplamlarını hesapla
     today = date.today()
     current_month_str = today.strftime("%Y-%m")
     
-    # Önceki ayı hesapla
     first_day_of_current_month = today.replace(day=1)
     last_day_of_previous_month = first_day_of_current_month - timedelta(days=1)
     previous_month_str = last_day_of_previous_month.strftime("%Y-%m")
-
-    # Listeden aylık toplamları çıkar (Eğer veri yoksa 0.0 olarak ayarla)
-    current_month_total = next((item['total_co2e_kg'] for item in monthly_trend if item['month'] == current_month_str), 0.0)
-    previous_month_total = next((item['total_co2e_kg'] for item in monthly_trend if item['month'] == previous_month_str), 0.0)
-
+    
+    # Mevcut ay için scope ayrımı
+    current_month_data = monthly_data.get(current_month_str, {
+        "scope_1_co2e_kg": 0.0,
+        "scope_2_co2e_kg": 0.0,
+        "total_co2e_kg": 0.0
+    })
+    
+    previous_month_data = monthly_data.get(previous_month_str, {
+        "total_co2e_kg": 0.0
+    })
+    
     return {
-        "current_month_total": current_month_total,
-        "previous_month_total": previous_month_total,
+        "current_month_scope_1": current_month_data["scope_1_co2e_kg"],
+        "current_month_scope_2": current_month_data["scope_2_co2e_kg"],
+        "current_month_total": current_month_data["total_co2e_kg"],
+        "previous_month_total": previous_month_data["total_co2e_kg"],
         "monthly_trend": monthly_trend
     }
 
@@ -162,6 +189,30 @@ def get_all_emission_factors(db: Session) -> dict[str, models.EmissionFactor]:
     """Veritabanındaki tüm emisyon faktörlerini bir sözlük olarak döndürür."""
     factors = db.query(models.EmissionFactor).all()
     return {f.key: f for f in factors}
+
+def get_emission_factors_by_year(db: Session, year: int) -> dict[str, models.EmissionFactor]:
+    """
+    Belirtilen yıla ait emisyon faktörlerini döndürür.
+    Yıl bilgisi yoksa en güncel faktörleri kullanır (fallback).
+    """
+    # Önce belirtilen yıla ait faktörleri bul
+    factors_for_year = db.query(models.EmissionFactor).filter(
+        models.EmissionFactor.year == year
+    ).all()
+    
+    if factors_for_year:
+        return {f.key: f for f in factors_for_year}
+    
+    # Yıl bilgisi yoksa, yıl alanı NULL olan faktörleri al
+    factors_no_year = db.query(models.EmissionFactor).filter(
+        models.EmissionFactor.year.is_(None)
+    ).all()
+    
+    if factors_no_year:
+        return {f.key: f for f in factors_no_year}
+    
+    # Hiçbiri yoksa tüm faktörleri döndür
+    return get_all_emission_factors(db)
 
 def create_emission_factor(db: Session, factor: schemas.EmissionFactorCreate) -> models.EmissionFactor:
     db_factor = models.EmissionFactor(**factor.model_dump())
