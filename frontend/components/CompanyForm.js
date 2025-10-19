@@ -8,18 +8,24 @@ import toast from 'react-hot-toast'; // react-hot-toast'u import ediyoruz
 export default function CompanyForm({ onFormSubmit, initialData = null }) {
   const [name, setName] = useState('');
   const [taxNumber, setTaxNumber] = useState('');
+  const [industryType, setIndustryType] = useState(''); // YENİ: Sektör tipi
 
   // Eğer initialData varsa (yani düzenleme modundaysak), formu doldur
   useEffect(() => {
     if (initialData) {
       setName(initialData.name);
       setTaxNumber(initialData.tax_number);
+      setIndustryType(initialData.industry_type || ''); // YENİ: Sektör tipini doldur
     }
   }, [initialData]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const companyData = { name, tax_number: taxNumber };
+    const companyData = { 
+      name, 
+      tax_number: taxNumber,
+      industry_type: industryType || null // YENİ: Sektör tipini ekle
+    };
 
     // Düzenleme modunda mıyız yoksa yeni kayıt mı?
     const request = initialData
@@ -59,6 +65,19 @@ export default function CompanyForm({ onFormSubmit, initialData = null }) {
           required
           className="w-full px-2 py-1 border rounded"
         />
+        {/* YENİ: Sektör Tipi Select */}
+        <select
+          value={industryType}
+          onChange={(e) => setIndustryType(e.target.value)}
+          className="w-full px-2 py-1 border rounded"
+          title="Sektör tipi seçiniz (benchmarking için)"
+        >
+          <option value="">Sektör Tipi Seçiniz...</option>
+          <option value="manufacturing">İmalat</option>
+          <option value="services">Hizmet</option>
+          <option value="retail">Perakende</option>
+          <option value="other">Diğer</option>
+        </select>
       </div>
       <button type="submit" className="mt-2 px-4 py-2 text-white bg-blue-600 rounded hover:bg-blue-700">
         {initialData ? 'Güncelle' : 'Ekle'}

@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../lib/api';
+import toast from 'react-hot-toast';  {/* YENİ: toast.promise kullanımı için */}
 
 const FacilityForm = ({ companyId, onFacilityAdded, facilityToEdit }) => {
     const [name, setName] = useState('');
@@ -11,7 +12,6 @@ const FacilityForm = ({ companyId, onFacilityAdded, facilityToEdit }) => {
     const [address, setAddress] = useState('');
     const [facilityType, setFacilityType] = useState('production');
     const [surfaceArea, setSurfaceArea] = useState('');
-    const [error, setError] = useState('');
     const { token } = useAuth();
 
     useEffect(() => {
@@ -33,10 +33,15 @@ const FacilityForm = ({ companyId, onFacilityAdded, facilityToEdit }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setError('');
 
         if (!name) {
-            setError('Tesis adı zorunludur.');
+            toast.error('Tesis adı zorunludur.');
+            return;
+        }
+
+        // YENİ: surface_area_m2 zorunlu (Benchmark için kritik)
+        if (!surfaceArea || parseFloat(surfaceArea) <= 0) {
+            toast.error('Tesis alanı zorunludur ve pozitif bir sayı olmalıdır (Benchmarking için gerekli).');
             return;
         }
 
@@ -48,21 +53,23 @@ const FacilityForm = ({ companyId, onFacilityAdded, facilityToEdit }) => {
             surface_area_m2: surfaceArea ? parseFloat(surfaceArea) : null,
         };
 
-        try {
-            let response;
-            if (facilityToEdit) {
-                // Update existing facility
-                response = await api.put(`/facilities/${facilityToEdit.id}`, facilityData, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-            } else {
-                // Create new facility
-                response = await api.post(`/companies/${companyId}/facilities/`, facilityData, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-            }
+        // YENİ: toast.promise kullanımı (react-hot-toast standardı)
+        let request;
+        if (facilityToEdit) {
+            // Update existing facility
+            request = api.put(`/facilities/${facilityToEdit.id}`, facilityData, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+        } else {
+            // Create new facility
+            request = api.post(`/companies/${companyId}/facilities/`, facilityData, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+        }
 
-            if (response.status === 201 || response.status === 200) {
+        toast.promise(request, {
+            loading: 'Kaydediliyor...',
+            success: (response) => {
                 onFacilityAdded(response.data);
                 // Reset form fields
                 setName('');
@@ -70,16 +77,15 @@ const FacilityForm = ({ companyId, onFacilityAdded, facilityToEdit }) => {
                 setAddress('');
                 setFacilityType('production');
                 setSurfaceArea('');
-            }
-        } catch (err) {
-            setError(err.response?.data?.detail || 'Bir hata oluştu.');
-        }
+                return facilityToEdit ? 'Başarıyla güncellendi!' : 'Başarıyla eklendi!';
+            },
+            error: (err) => err.response?.data?.detail || 'Bir hata oluştu.',
+        });
     };
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4 p-6 bg-gray-50 rounded-lg shadow-md mb-8">
             <h3 className="text-xl font-semibold text-gray-800 border-b pb-2">{facilityToEdit ? 'Tesisi Düzenle' : 'Yeni Tesis Ekle'}</h3>
-            {error && <p className="text-red-500 bg-red-100 p-2 rounded">{error}</p>}
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -120,7 +126,10 @@ const FacilityForm = ({ companyId, onFacilityAdded, facilityToEdit }) => {
                     />
                 </div>
                 <div>
-                    <label htmlFor="surfaceArea" className="block text-sm font-medium text-gray-700">Isıtılan / Soğutulan Toplam Zemin Alanı (m²)</label>
+                    <label htmlFor="surfaceArea" className="block text-sm font-medium text-gray-700">
+                        Isıtılan / Soğutulan Toplam Zemin Alanı (m²) 
+                        <span className="text-red-600 font-bold">*</span>
+                    </label>
                     <input
                         type="number"
                         id="surfaceArea"
@@ -128,6 +137,9 @@ const FacilityForm = ({ companyId, onFacilityAdded, facilityToEdit }) => {
                         onChange={(e) => setSurfaceArea(e.target.value)}
                         className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                         placeholder="Örn: 1500"
+                        required 
+                        min="0.1" 
+                        step="0.01"
                     />
                 </div>
             </div>
