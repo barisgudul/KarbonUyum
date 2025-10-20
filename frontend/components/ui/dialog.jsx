@@ -1,3 +1,4 @@
+// frontend/components/ui/dialog.jsx
 "use client"
 
 import * as React from "react"

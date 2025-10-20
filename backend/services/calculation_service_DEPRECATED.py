@@ -1,18 +1,31 @@
 # backend/services/calculation_service.py
+"""
+İç Emisyon Hesaplama Servisi (Fallback).
+
+Bu servis, Climatiq API erişilemediğinde yedek olarak kullanılır.
+Veritabanında depolanan emisyon faktörlerini kullanarak basit hesaplamalar yapar.
+
+Not: Bu servis birincil hesaplama yöntemi değildir. Climatiq API'si tercih edilir.
+Fallback mekanizması olarak tutulur - sistem dayanıklılığını artırır.
+"""
+
 import logging
 from sqlalchemy.orm import Session
 from datetime import date
 import models
 import schemas
 import crud
+from .calculation_interface import ICalculationService
 
 logger = logging.getLogger(__name__)
 
 
-class CalculationService:
+class CalculationService(ICalculationService):
     """
-    GHG Protokolü uyumlu emisyon hesaplama servisi.
+    GHG Protokolü uyumlu emisyon hesaplama servisi (Fallback/Internal).
     Yıl bazlı emisyon faktörleri kullanır ve Scope bilgisi ile hesaplama yapar.
+    
+    Implements ICalculationService interface for pluggable provider architecture.
     """
     
     def __init__(self, db: Session, year: int = None):
@@ -24,6 +37,18 @@ class CalculationService:
         self.db = db
         self.year = year if year is not None else date.today().year
         self.emission_factors = self._load_factors()
+    
+    def get_provider_name(self) -> str:
+        """Get the name of this provider."""
+        return "internal_fallback"
+    
+    def health_check(self) -> bool:
+        """
+        Check if internal calculation service is available.
+        
+        Returns True if emission factors are loaded, False otherwise.
+        """
+        return len(self.emission_factors) > 0
     
     def _load_factors(self) -> dict[str, models.EmissionFactor]:
         """Belirtilen yıla ait emisyon faktörlerini yükler."""
@@ -59,6 +84,9 @@ class CalculationService:
         """
         Verilen aktivite verisi için detaylı emisyon hesaplaması yapar.
         
+        WARNING: This is a fallback/internal calculation service.
+        Results may be less accurate than Climatiq API calculations.
+        
         Returns:
             EmissionCalculationResult: Hesaplama sonuçları ve metadata
         """
@@ -71,7 +99,8 @@ class CalculationService:
         if not factor_key or factor_key not in self.emission_factors:
             logger.warning(
                 f"Emisyon faktörü '{factor_key}' bulunamadı. "
-                f"Aktivite tipi: {activity_data.activity_type}, Yıl: {self.year}"
+                f"Aktivite tipi: {activity_data.activity_type}, Yıl: {self.year}. "
+                f"Using internal fallback calculation with zero emissions."
             )
             # Sıfır emisyon döndür ama hesaplama bilgilerini koru
             return schemas.EmissionCalculationResult(
@@ -79,7 +108,8 @@ class CalculationService:
                 scope=scope,
                 emission_factor_used=factor_key or "unknown",
                 emission_factor_value=0.0,
-                calculation_year=self.year
+                calculation_year=self.year,
+                is_fallback=True
             )
         
         emission_factor = self.emission_factors[factor_key]
@@ -87,12 +117,19 @@ class CalculationService:
         # CO2e hesaplama
         total_co2e_kg = activity_data.quantity * emission_factor.value
         
+        logger.warning(
+            f"Using internal fallback calculation for {activity_data.activity_type}. "
+            f"Result: {total_co2e_kg:.2f} kg CO2e. "
+            f"This calculation may not reflect current standards or Climatiq data."
+        )
+        
         return schemas.EmissionCalculationResult(
             total_co2e_kg=total_co2e_kg,
             scope=scope,
             emission_factor_used=factor_key,
             emission_factor_value=emission_factor.value,
-            calculation_year=self.year
+            calculation_year=self.year,
+            is_fallback=True  # Mark as fallback for legal transparency
         )
     
     def calculate_co2e(self, activity_data: schemas.ActivityDataBase) -> float:

@@ -9,10 +9,8 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 import crud
-# DEPRECATED: Eski hesaplama servisi
-# from services.calculation_service import CalculationService
-# YENİ: Climatiq API tabanlı hesaplama
-from services.climatiq_service import ClimatiqService
+# YENİ: Pluggable calculation service factory
+from services import get_calculation_service, ICalculationService
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +18,12 @@ logger = logging.getLogger(__name__)
 class CSVProcessor:
     """
     CSV dosyalarından aktivite verisi yükleme işlemlerini yöneten sınıf.
+    
+    Features:
+    - Turkish decimal (comma) handling
+    - Comprehensive validation with line-by-line error reporting
+    - Pluggable calculation service provider
+    - Atomic transactions (all-or-nothing commit)
     """
     
     def __init__(self, db: Session, facility_id: int):
@@ -30,8 +34,8 @@ class CSVProcessor:
         """
         self.db = db
         self.facility_id = facility_id
-        # YENİ: Climatiq API ile hesaplama
-        self.calculation_service = ClimatiqService()
+        # YENİ: Use factory function for pluggable provider selection
+        self.calculation_service: ICalculationService = get_calculation_service(self.db)
     
     def process_csv_file(self, file_content: bytes) -> schemas.CSVUploadResult:
         """

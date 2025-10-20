@@ -4,14 +4,22 @@ from datetime import date
 from typing import List, Optional
 import enum
 
-from pydantic import BaseModel, EmailStr, Field, computed_field
+from pydantic import BaseModel, EmailStr, Field, computed_field, ConfigDict
 import models
 
 # Rol Enum'ını modellerden import ediyoruz
 from models import ActivityType, CompanyMemberRole, ScopeType
 
+# -- Strict Validation Base Config --
+class StrictBaseModel(BaseModel):
+    """
+    Base model with strict validation to prevent injection attacks.
+    Disallows extra fields not defined in the schema.
+    """
+    model_config = ConfigDict(extra="forbid")
+
 # -- User Schemas --
-class UserBase(BaseModel):
+class UserBase(StrictBaseModel):
     email: EmailStr
     class Config:
         from_attributes = True
@@ -346,3 +354,8 @@ class BenchmarkReportResponse(BaseModel):
     comparable_companies_count: int
     data_available: bool  # Yeterli veri var mı?
     message: str  # "Yeterli veri yok", "3 firma ile karşılaştırıldı", vb.
+
+# -- Health Check Schemas --
+class HealthCheckResponse(BaseModel):
+    status: str
+    message: str

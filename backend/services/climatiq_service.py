@@ -13,6 +13,7 @@ from datetime import date
 
 import models
 import schemas
+from .calculation_interface import ICalculationService
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +22,14 @@ CLIMATIQ_API_KEY = os.getenv("CLIMATIQ_API_KEY")
 CLIMATIQ_API_BASE_URL = "https://api.climatiq.io/data/v1"
 
 
-class ClimatiqService:
+class ClimatiqService(ICalculationService):
     """
     Climatiq API ile emisyon hesaplamaları yapan servis.
     
     Bu servis, güvenilir ve uluslararası standartlara uygun
     emisyon faktörleri sağlar.
+    
+    Implements ICalculationService interface for pluggable provider architecture.
     """
     
     def __init__(self, year: int = None):
@@ -35,12 +38,27 @@ class ClimatiqService:
             year: Hesaplama için kullanılacak yıl. None ise mevcut yıl.
         """
         self.year = year if year is not None else date.today().year
+        self.api_calls_count = 0
+        self.api_failures_count = 0
         
         if not CLIMATIQ_API_KEY:
             logger.warning(
                 "CLIMATIQ_API_KEY environment variable is not set. "
                 "Service will fail on API calls."
             )
+    
+    def get_provider_name(self) -> str:
+        """Get the name of this provider."""
+        return "climatiq"
+    
+    def health_check(self) -> bool:
+        """
+        Check if Climatiq API is available.
+        
+        Returns True if API key is configured, False otherwise.
+        Note: This does not make an actual API call to avoid costs.
+        """
+        return bool(CLIMATIQ_API_KEY)
     
     def _get_scope(self, activity_type: models.ActivityType) -> models.ScopeType:
         """
@@ -154,6 +172,7 @@ class ClimatiqService:
                 response = client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
             
+            self.api_calls_count += 1
             data = response.json()
             
             # Climatiq'ten gelen CO2e değeri (kg cinsinden)
@@ -163,6 +182,11 @@ class ClimatiqService:
             emission_factor_info = data.get("emission_factor", {})
             emission_factor_used = emission_factor_info.get("id", "unknown")
             emission_factor_value = emission_factor_info.get("factor", 0.0)
+            
+            logger.info(
+                f"Climatiq API call successful. Activity: {activity_data.activity_type}, "
+                f"Result: {total_co2e_kg:.2f} kg CO2e. Total calls: {self.api_calls_count}"
+            )
             
             return schemas.EmissionCalculationResult(
                 total_co2e_kg=total_co2e_kg,
@@ -174,9 +198,11 @@ class ClimatiqService:
             )
             
         except httpx.HTTPStatusError as e:
+            self.api_failures_count += 1
             error_detail = e.response.text
             logger.error(
-                f"Climatiq API error (status {e.response.status_code}): {error_detail}"
+                f"Climatiq API error (status {e.response.status_code}): {error_detail}. "
+                f"Failures so far: {self.api_failures_count}"
             )
             
             # API hatası durumunda fallback: basit hesaplama
@@ -184,10 +210,12 @@ class ClimatiqService:
             return self._fallback_calculation(activity_data, scope)
             
         except httpx.RequestError as e:
-            logger.error(f"Climatiq API request error: {str(e)}")
+            self.api_failures_count += 1
+            logger.error(f"Climatiq API request error: {str(e)}. Failures so far: {self.api_failures_count}")
             return self._fallback_calculation(activity_data, scope)
         
         except Exception as e:
+            self.api_failures_count += 1
             logger.error(f"Unexpected error in Climatiq service: {str(e)}", exc_info=True)
             return self._fallback_calculation(activity_data, scope)
     

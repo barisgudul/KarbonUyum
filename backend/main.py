@@ -26,7 +26,7 @@ from carbon_calculator import get_calculator, CarbonCalculator
 # DEPRECATED: Eski dahili hesaplama servisi arşivlendi
 # from services.calculation_service import CalculationService, get_calculation_service
 # YENİ: Climatiq API tabanlı hesaplama servisi
-from services.climatiq_service import ClimatiqService, get_climatiq_service
+from services import get_calculation_service, ICalculationService
 from services.benchmarking_service import BenchmarkingService
 from csv_handler import CSVProcessor, get_csv_template
 from fastapi import APIRouter # import APIRouter
@@ -45,6 +45,37 @@ app = FastAPI(title="KarbonUyum API", version="0.5.0") # Sürüm güncellendi: R
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# YENİ: Security Headers Middleware (MVP Security Hardening)
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """
+    Add security headers to all responses to prevent common vulnerabilities.
+    Part of MVP security hardening (Phase 3).
+    """
+    response = await call_next(request)
+    
+    # Prevent clickjacking attacks
+    response.headers["X-Frame-Options"] = "DENY"
+    
+    # Prevent MIME-sniffing attacks
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    
+    # Enable cross-site scripting (XSS) protection
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    
+    # Enforce HTTPS in production
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    
+    # Prevent referrer leakage
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    
+    # Content Security Policy
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'"
+    
+    logger.debug(f"Security headers added to {request.url.path}")
+    
+    return response
 
 admin = Admin(app, engine)
 
@@ -276,7 +307,7 @@ def create_activity_data_for_facility(
     ])
 
     # YENİ: Climatiq API ile hesaplama
-    calc_service = ClimatiqService(year=calculation_year)
+    calc_service = get_calculation_service()
     calculation_result = calc_service.calculate_for_activity(activity_data)
 
     # Veritabanına kaydet (scope ve fallback bilgisi ile)
@@ -347,7 +378,7 @@ def update_activity_data(
     ])
 
     # YENİ: Climatiq API ile hesaplama
-    calc_service = ClimatiqService(year=calculation_year)
+    calc_service = get_calculation_service()
     calculation_result = calc_service.calculate_for_activity(activity_data)
 
     # Verileri güncelle
@@ -585,4 +616,34 @@ async def upload_activity_data_csv(
         raise HTTPException(
             status_code=500,
             detail=f"CSV işleme sırasında bir hata oluştu: {str(e)}"
+        )
+
+@app.get("/health/calculation-service", response_model=schemas.HealthCheckResponse)
+def health_check_calculation_service(
+    db: Session = Depends(get_db)
+):
+    """
+    Hesaplama servisinin sağlık durumunu kontrol eder.
+    Konfigüre edilen provider'ın kullanılabilir olup olmadığını doğrular.
+    """
+    try:
+        calc_service: ICalculationService = get_calculation_service(db)
+        provider_name = calc_service.get_provider_name()
+        is_healthy = calc_service.health_check()
+        
+        if is_healthy:
+            return schemas.HealthCheckResponse(
+                status="ok", 
+                message=f"Calculation service '{provider_name}' is healthy"
+            )
+        else:
+            return schemas.HealthCheckResponse(
+                status="warning", 
+                message=f"Calculation service '{provider_name}' is not responding"
+            )
+    except Exception as e:
+        logger.error(f"Calculation service health check failed: {str(e)}", exc_info=True)
+        return schemas.HealthCheckResponse(
+            status="error", 
+            message=f"Calculation service health check failed: {str(e)}"
         )
