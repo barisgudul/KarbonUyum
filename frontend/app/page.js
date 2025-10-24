@@ -1,3 +1,4 @@
+// frontend/app/page.js
 import Link from 'next/link';
 import { Leaf, TrendingDown, BarChart3, Zap, ArrowRight, Shield } from 'lucide-react';
 

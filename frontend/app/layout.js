@@ -1,9 +1,9 @@
 // frontend/app/layout.js
 import { AuthProvider } from '../context/AuthContext';
+import Providers from './providers';
 import './globals.css';
-import { Toaster } from 'react-hot-toast'; // <-- YENİ: Import et
+import { Toaster } from 'react-hot-toast';
 
-// Tailwind CSS için bu satırları ekleyebilirsin
 import { Inter } from 'next/font/google'
 const inter = Inter({ subsets: ['latin'] })
 
@@ -17,9 +17,10 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
-          {children}
-          {/* YENİ: Toaster'ı buraya ekliyoruz. Bildirimler sağ altta görünecek. */}
-          <Toaster position="bottom-right" />
+          <Providers>
+            {children}
+            <Toaster position="bottom-right" />
+          </Providers>
         </AuthProvider>
       </body>
     </html>
