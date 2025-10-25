@@ -11,7 +11,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 # Diğer dosyalarımızdan gerekli parçaları import ediyoruz
-from database import SessionLocal
+from database import SessionLocal, get_db
 import schemas
 
 # .env dosyasından güvenlik ayarlarını yükle
@@ -45,13 +45,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 
-# Veritabanı session'ı için bir dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# get_db fonksiyonu artık database.py dosyasında tanımlı
+# from database import get_db şeklinde import edilebilir
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):

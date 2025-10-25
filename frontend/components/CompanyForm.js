@@ -44,43 +44,53 @@ export default function CompanyForm({ onFormSubmit, initialData = null }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-4 mb-6 border rounded-lg bg-gray-50">
-      <h3 className="text-lg font-semibold mb-2">
-        {initialData ? 'Şirketi Düzenle' : 'Yeni Şirket Ekle'}
-      </h3>
-      <div className="space-y-2">
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Şirket Adı"
-          required
-          className="w-full px-2 py-1 border rounded"
-        />
-        <input
-          type="text"
-          value={taxNumber}
-          onChange={(e) => setTaxNumber(e.target.value)}
-          placeholder="Vergi Numarası"
-          required
-          className="w-full px-2 py-1 border rounded"
-        />
-        {/* YENİ: Sektör Tipi Select */}
-        <select
-          value={industryType}
-          onChange={(e) => setIndustryType(e.target.value)}
-          className="w-full px-2 py-1 border rounded"
-          title="Sektör tipi seçiniz (benchmarking için)"
-        >
-          <option value="">Sektör Tipi Seçiniz...</option>
-          <option value="manufacturing">İmalat</option>
-          <option value="services">Hizmet</option>
-          <option value="retail">Perakende</option>
-          <option value="other">Diğer</option>
-        </select>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm font-bold text-emerald-300 mb-2">Şirket Adı *</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Örn: ABC Şirketi A.Ş."
+            required
+            className="w-full px-4 py-2.5 bg-slate-700/50 border border-emerald-500/30 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+          />
+        </div>
+        
+        <div>
+          <label className="block text-sm font-bold text-emerald-300 mb-2">Vergi Numarası *</label>
+          <input
+            type="text"
+            value={taxNumber}
+            onChange={(e) => setTaxNumber(e.target.value)}
+            placeholder="Örn: 1234567890"
+            required
+            className="w-full px-4 py-2.5 bg-slate-700/50 border border-emerald-500/30 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+          />
+        </div>
+        
+        <div>
+          <label className="block text-sm font-bold text-emerald-300 mb-2">Sektör Tipi</label>
+          <select
+            value={industryType}
+            onChange={(e) => setIndustryType(e.target.value)}
+            className="w-full px-4 py-2.5 bg-slate-700/50 border border-emerald-500/30 rounded-lg text-white focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all appearance-none cursor-pointer"
+          >
+            <option value="" className="bg-slate-800">Sektör Tipi Seçiniz...</option>
+            <option value="manufacturing" className="bg-slate-800">İmalat</option>
+            <option value="services" className="bg-slate-800">Hizmet</option>
+            <option value="retail" className="bg-slate-800">Perakende</option>
+            <option value="other" className="bg-slate-800">Diğer</option>
+          </select>
+        </div>
       </div>
-      <button type="submit" className="mt-2 px-4 py-2 text-white bg-blue-600 rounded hover:bg-blue-700">
-        {initialData ? 'Güncelle' : 'Ekle'}
+      
+      <button 
+        type="submit" 
+        className="w-full mt-6 px-4 py-3 font-black text-white bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-600 hover:via-teal-600 hover:to-cyan-600 rounded-lg transition-all duration-300 shadow-lg hover:shadow-emerald-500/50 transform hover:scale-105 active:scale-95"
+      >
+        {initialData ? 'Güncelle' : 'Şirket Ekle'}
       </button>
     </form>
   );

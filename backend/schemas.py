@@ -4,7 +4,7 @@ from datetime import date
 from typing import List, Optional
 import enum
 
-from pydantic import BaseModel, EmailStr, Field, computed_field, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, computed_field, ConfigDict, field_validator
 import models
 
 # Rol Enum'ını modellerden import ediyoruz
@@ -29,7 +29,7 @@ class UserCreate(UserBase):
 
 # Üyeleri ve rollerini bir arada göstermek için yeni bir şema
 class CompanyMember(UserBase):
-    role: CompanyMemberRole
+    role: Optional[CompanyMemberRole] = CompanyMemberRole.data_entry
 
 # -- ActivityData Schemas --
 class ActivityDataBase(BaseModel):

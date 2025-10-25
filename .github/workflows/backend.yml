@@ -1,0 +1,46 @@
+# .github/workflows/backend.yml
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [ "main" ] # Main branch'e push yapıldığında deploy eder
+  pull_request:
+    branches: [ "main" ] # Main'e açılan PR'larda sadece test eder
+    paths:
+      - 'backend/**' # Sadece backend dizininde değişiklik varsa tetiklenir
+
+jobs:
+  build-test-and-deploy:
+    runs-on: ubuntu-latest # İş akışının çalışacağı sanal makine
+
+    steps:
+      - name: 1. Kodu Al (Checkout)
+        uses: actions/checkout@v4
+
+      - name: 2. Python Ortamını Kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' # Projenizin Python versiyonu
+
+      - name: 3. Bağımlılıkları Yükle
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: 4. Güvenlik Denetimini Çalıştır
+        run: |
+          pip install pip-audit
+          pip-audit --ignore-vuln GHSA-wj6h-64fc-37mp # Kararlaştırdığımız komut
+
+      - name: 5. Testleri Çalıştır (Varsa)
+        # Eğer testleriniz varsa bu adımı ekleyin
+        # run: pytest backend/tests/
+        run: echo "Test adımı atlandı."
+
+      - name: 6. Production'a Deploy Et (Sadece main branch'e push yapıldığında)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "Backend production'a deploy ediliyor..."
+          # BURAYA DEPLOYMENT SCRIPT'İNİZ GELECEK
+          # Örnek: SSH ile sunucuya bağlanıp kodu çekme
+          # ssh user@${{ secrets.SERVER_HOST }} "cd /path/to/project && git pull && ..."

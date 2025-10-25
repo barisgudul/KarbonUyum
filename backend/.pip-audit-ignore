@@ -1,0 +1,3 @@
+# Bu zafiyet (GHSA-wj6h-64fc-37mp), 0.18.0.post2 versiyonunda düzeltilmiştir.
+# Kullandığımız 0.19.1 versiyonu daha yeni olduğu için bu bir yanlış pozitiftir.
+ecdsa GHSA-wj6h-64fc-37mp

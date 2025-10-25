@@ -14,7 +14,7 @@ from fastapi import Depends
 
 from .calculation_interface import ICalculationService
 from .climatiq_service import ClimatiqService
-from .calculation_service import CalculationService
+from .calculation_service_DEPRECATED import CalculationService
 from database import get_db
 
 logger = logging.getLogger(__name__)

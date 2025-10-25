@@ -3,10 +3,10 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 from typing import List, Union
-from .base import BaseSuggestionStrategy
+from suggestion_strategies.base import BaseSuggestionStrategy
 from sqlalchemy import func
 from datetime import date, timedelta
-from backend.services.data_analysis_service import DataAnalysisService
+from services.data_analysis_service import DataAnalysisService
 
 class InsulationStrategy(BaseSuggestionStrategy):
     def is_applicable(self) -> bool:

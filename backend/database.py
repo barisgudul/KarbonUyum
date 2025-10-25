@@ -47,3 +47,16 @@ if SQLALCHEMY_DATABASE_URL and SQLALCHEMY_DATABASE_URL.startswith("postgresql"):
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
+
+# Veritabanı session'ı için bir dependency
+def get_db():
+    """
+    Dependency injection for database sessions.
+    Yields a database session and ensures proper cleanup.
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

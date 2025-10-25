@@ -1,0 +1,43 @@
+# .github/workflows/frontend.yml
+name: Frontend CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'frontend/**' # Sadece frontend dizininde değişiklik varsa tetiklenir
+
+jobs:
+  build-test-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Kodu Al (Checkout)
+        uses: actions/checkout@v4
+
+      - name: 2. Node.js Ortamını Kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Projenizin Node.js versiyonu
+
+      - name: 3. Bağımlılıkları Yükle
+        working-directory: ./frontend # Komutun çalışacağı dizini belirt
+        run: npm ci # 'npm install' yerine 'npm ci' CI için daha güvenilirdir
+
+      - name: 4. Testleri Çalıştır (Varsa)
+        working-directory: ./frontend
+        run: npm test
+
+      - name: 5. Production için Build Al
+        working-directory: ./frontend
+        run: npm run build
+
+      - name: 6. Production'a Deploy Et (Sadece main branch'e push yapıldığında)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "Frontend production'a deploy ediliyor..."
+          # BURAYA DEPLOYMENT SCRIPT'İNİZ GELECEK
+          # Örnek: AWS S3'e build dosyalarını yükleme
+          # aws s3 sync frontend/build s3://${{ secrets.S3_BUCKET_NAME }} --delete

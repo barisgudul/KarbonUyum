@@ -5,8 +5,8 @@ import models
 import schemas
 from datetime import date, timedelta
 from typing import List, Union
-from .base import BaseSuggestionStrategy
-from backend.services.data_analysis_service import DataAnalysisService
+from suggestion_strategies.base import BaseSuggestionStrategy
+from services.data_analysis_service import DataAnalysisService
 
 class GESSuggestionStrategy(BaseSuggestionStrategy):
     def is_applicable(self) -> bool:

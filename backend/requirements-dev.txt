@@ -1,0 +1,2 @@
+# backend/requirements-dev.txt 
+pip-audit==2.6.0

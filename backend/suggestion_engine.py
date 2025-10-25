@@ -4,9 +4,9 @@ from typing import List, Union
 import models
 import schemas
 from sqlalchemy.orm import Session
-from .suggestion_strategies.ges_strategy import GESSuggestionStrategy
+from suggestion_strategies.ges_strategy import GESSuggestionStrategy
 # Gelecekte eklenecek stratejiler buraya import edilecek
-from .suggestion_strategies.insulation_strategy import InsulationStrategy
+from suggestion_strategies.insulation_strategy import InsulationStrategy
 
 # Tüm strateji sınıflarını bir listede topla
 ALL_STRATEGIES = [
