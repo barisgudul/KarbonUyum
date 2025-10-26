@@ -63,18 +63,63 @@ export default function SummaryPanel() {
 
   const COLORS = ['#10b981', '#06b6d4'];
 
+  // Fill missing months in the monthly trend data
+  const processedMonthlyTrend = (() => {
+    if (summary.monthly_trend.length === 0) return [];
+    
+    const trend = summary.monthly_trend;
+    const firstMonth = new Date(trend[0].month + '-01');
+    const lastMonth = new Date(trend[trend.length - 1].month + '-01');
+    
+    const filledData = [];
+    const currentDate = new Date(firstMonth);
+    
+    while (currentDate <= lastMonth) {
+      const monthStr = currentDate.toISOString().slice(0, 7); // YYYY-MM format
+      const existingData = trend.find(item => item.month === monthStr);
+      
+      if (existingData) {
+        filledData.push(existingData);
+      } else {
+        filledData.push({
+          month: monthStr,
+          scope_1_co2e_kg: 0,
+          scope_2_co2e_kg: 0,
+          total_co2e_kg: 0
+        });
+      }
+      
+      currentDate.setMonth(currentDate.getMonth() + 1);
+    }
+    
+    return filledData;
+  })();
+
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-slate-800 border border-emerald-500/50 p-3 rounded-lg shadow-xl backdrop-blur">
-          <p className="font-bold text-emerald-300 mb-2">{label}</p>
+        <div 
+          style={{
+            backgroundColor: '#020617',
+            border: '2px solid #10b981',
+            borderRadius: '6px',
+            padding: '12px',
+            boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.9)',
+            zIndex: 10000,
+            position: 'absolute',
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+            fontSize: '12px'
+          }}
+        >
+          <p style={{ fontWeight: 900, color: '#10b981', marginBottom: '6px', fontSize: '12px' }}>{label}</p>
           {payload.map((entry, index) => (
-            <p key={index} style={{ color: entry.color }} className="text-sm font-semibold">
-              {entry.name}: {entry.value.toFixed(2)} kg
+            <p key={index} style={{ color: entry.color, fontSize: '11px', fontWeight: 700, margin: '2px 0' }}>
+              {entry.name}: {entry.value.toFixed(1)} kg
             </p>
           ))}
-          <p className="text-sm font-black text-cyan-300 mt-2 pt-2 border-t border-emerald-500/30">
-            Toplam: {payload.reduce((sum, entry) => sum + entry.value, 0).toFixed(2)} kg CO₂e
+          <p style={{ fontSize: '11px', fontWeight: 900, color: '#06b6d4', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid rgba(16, 185, 129, 0.5)' }}>
+            Toplam: {payload.reduce((sum, entry) => sum + entry.value, 0).toFixed(1)} kg
           </p>
         </div>
       );
@@ -149,11 +194,16 @@ export default function SummaryPanel() {
           <p className="text-emerald-300/70 text-sm font-semibold mb-6">Scope Bazlı Dağılım</p>
           <div style={{ width: '100%', height: 300 }}>
             <ResponsiveContainer>
-              <BarChart data={summary.monthly_trend} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+              <BarChart data={processedMonthlyTrend} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
                 <XAxis dataKey="month" stroke="#10b981" />
                 <YAxis stroke="#10b981" />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip 
+                  content={<CustomTooltip />}
+                  wrapperStyle={{ outline: 'none', pointerEvents: 'none' }}
+                  contentStyle={{ outline: 'none', pointerEvents: 'none' }}
+                  cursor={{ fill: 'rgba(16, 185, 129, 0.1)' }}
+                />
                 <Legend />
                 <Bar dataKey="scope_1_co2e_kg" stackId="a" fill="#10b981" name="Scope 1 (Doğrudan)" radius={[8, 8, 0, 0]} />
                 <Bar dataKey="scope_2_co2e_kg" stackId="a" fill="#06b6d4" name="Scope 2 (Enerji)" radius={[8, 8, 0, 0]} />
@@ -200,7 +250,7 @@ export default function SummaryPanel() {
         <p className="text-emerald-300/70 text-sm font-semibold mb-6">Aylık Gelişim</p>
         <div style={{ width: '100%', height: 280 }}>
           <ResponsiveContainer>
-            <AreaChart data={summary.monthly_trend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <AreaChart data={processedMonthlyTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>

@@ -223,9 +223,6 @@ export function useCreateActivityData() {
       queryClient.invalidateQueries({ queryKey: ['user', 'companies'] });
       return response.data;
     },
-    onError: (error) => {
-      toast.error(error.response?.data?.detail || 'Aktivite verisi kaydedilemedi.');
-    },
   });
 }
 

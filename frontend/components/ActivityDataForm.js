@@ -1,7 +1,7 @@
 // frontend/components/ActivityDataForm.js
 'use client';
 import { useState, useEffect } from 'react';
-import api from '../lib/api';
+import { useCreateActivityData } from '../hooks/useCompanies';
 import toast from 'react-hot-toast';
 
 // Desteklenen birim seçeneklerini tanımla
@@ -15,10 +15,12 @@ export default function ActivityDataForm({ facilityId, onFormSubmit, initialData
   const [formData, setFormData] = useState({
     activity_type: 'electricity',
     quantity: '',
-    unit: UNIT_OPTIONS['electricity'][0], // İlk aktivite türünün ilk birimini varsayılan yap
+    unit: UNIT_OPTIONS['electricity'][0],
     start_date: '',
     end_date: '',
   });
+
+  const { mutate: createActivityData, isPending: isLoading } = useCreateActivityData();
 
   useEffect(() => {
     if (initialData) {
@@ -32,69 +34,74 @@ export default function ActivityDataForm({ facilityId, onFormSubmit, initialData
     }
   }, [initialData]);
 
-  const [error, setError] = useState(null);
-
   const handleChange = (e) => {
     const { name, value } = e.target;
     let newFormData = { ...formData, [name]: value };
 
-    // Eğer aktivite türü değişiyorsa, birim listesini güncelle ve varsayılan birimi ayarla
     if (name === 'activity_type') {
-      newFormData.unit = UNIT_OPTIONS[value][0]; // Yeni türün ilk birimini seç
+      newFormData.unit = UNIT_OPTIONS[value][0];
     }
     setFormData(newFormData);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
     const dataPayload = { ...formData, quantity: parseFloat(formData.quantity) };
 
-    const request = initialData
-      ? api.put(`/activity-data/${initialData.id}`, dataPayload)
-      : api.post(`/facilities/${facilityId}/activity-data/`, dataPayload);
-
-    toast.promise(request, {
-      loading: 'Kaydediliyor...',
-      success: () => {
-        onFormSubmit();
-        return initialData ? 'Veri başarıyla güncellendi!' : 'Veri başarıyla eklendi!';
-      },
-      error: (err) => err.response?.data?.detail || 'Bir hata oluştu.',
-    });
+    createActivityData(
+      { facilityId, data: dataPayload },
+      {
+        onSuccess: (response) => {
+          onFormSubmit(response.data);
+          // Reset form
+          setFormData({
+            activity_type: 'electricity',
+            quantity: '',
+            unit: UNIT_OPTIONS['electricity'][0],
+            start_date: '',
+            end_date: '',
+          });
+        },
+        onError: (error) => {
+          const errorMessage = error.response?.data?.detail || 'Bir hata oluştu.';
+          // Eğer errorMessage string değilse, stringify et
+          const message = typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage);
+          toast.error(message);
+        },
+      }
+    );
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-4 mt-2 ml-8 border-l-2 border-gray-200 bg-gray-50">
-      <h5 className="font-semibold mb-2 text-gray-700">
+    <form onSubmit={handleSubmit} className="p-4 mt-2 ml-0 border-0 bg-gradient-to-br from-slate-800/50 to-slate-900/30 rounded-xl border border-emerald-500/30 backdrop-blur-xl">
+      <h5 className="font-black text-emerald-200 mb-4 pb-2 border-b border-emerald-500/20">
         {initialData ? 'Aktivite Verisini Düzenle' : 'Yeni Aktivite Verisi Ekle'}
       </h5>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <select name="activity_type" value={formData.activity_type} onChange={handleChange} className="w-full px-2 py-1 border rounded">
-          <option value="electricity">Elektrik</option>
-          <option value="natural_gas">Doğal Gaz</option>
-          <option value="diesel_fuel">Dizel Yakıt</option>
+        <select name="activity_type" value={formData.activity_type} onChange={handleChange} disabled={isLoading} className="w-full px-3 py-2.5 bg-white/5 border border-emerald-500/30 rounded-lg text-white focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all appearance-none cursor-pointer disabled:opacity-50">
+          <option value="electricity" className="bg-slate-800">Elektrik</option>
+          <option value="natural_gas" className="bg-slate-800">Doğal Gaz</option>
+          <option value="diesel_fuel" className="bg-slate-800">Dizel Yakıt</option>
         </select>
-        <input type="number" step="any" name="quantity" value={formData.quantity} onChange={handleChange} placeholder="Tüketim Miktarı" required className="w-full px-2 py-1 border rounded" />
+        <input type="number" step="any" name="quantity" value={formData.quantity} onChange={handleChange} disabled={isLoading} placeholder="Tüketim Miktarı" required className="w-full px-3 py-2.5 bg-white/5 border border-emerald-500/30 rounded-lg text-white placeholder-emerald-300/50 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all disabled:opacity-50" />
         
-        {/* YENİ: Serbest metin alanı yerine dinamik select kutusu */}
-        <select name="unit" value={formData.unit} onChange={handleChange} required className="w-full px-2 py-1 border rounded">
+        <select name="unit" value={formData.unit} onChange={handleChange} disabled={isLoading} required className="w-full px-3 py-2.5 bg-white/5 border border-emerald-500/30 rounded-lg text-white focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all appearance-none cursor-pointer disabled:opacity-50">
           {UNIT_OPTIONS[formData.activity_type].map(unitOption => (
-            <option key={unitOption} value={unitOption}>{unitOption}</option>
+            <option key={unitOption} value={unitOption} className="bg-slate-800">{unitOption}</option>
           ))}
         </select>
         
         <div>
-          <label className="text-sm text-gray-600">Başlangıç Tarihi</label>
-          <input type="date" name="start_date" value={formData.start_date} onChange={handleChange} required className="w-full px-2 py-1 border rounded" />
+          <label className="text-sm text-emerald-300 font-bold block mb-1">Başlangıç Tarihi *</label>
+          <input type="date" name="start_date" value={formData.start_date} onChange={handleChange} disabled={isLoading} required className="w-full px-3 py-2.5 bg-white/5 border border-emerald-500/30 rounded-lg text-white focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all disabled:opacity-50" />
         </div>
         <div>
-          <label className="text-sm text-gray-600">Bitiş Tarihi</label>
-          <input type="date" name="end_date" value={formData.end_date} onChange={handleChange} required className="w-full px-2 py-1 border rounded" />
+          <label className="text-sm text-emerald-300 font-bold block mb-1">Bitiş Tarihi *</label>
+          <input type="date" name="end_date" value={formData.end_date} onChange={handleChange} disabled={isLoading} required className="w-full px-3 py-2.5 bg-white/5 border border-emerald-500/30 rounded-lg text-white focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all disabled:opacity-50" />
         </div>
       </div>
-      <button type="submit" className="mt-4 px-4 py-2 text-white bg-blue-600 rounded hover:bg-blue-700">
-        {initialData ? 'Güncelle' : 'Veri Ekle'}
+      <button type="submit" disabled={isLoading} className="mt-4 px-6 py-2.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-600 hover:via-teal-600 hover:to-cyan-600 disabled:from-slate-600 disabled:to-slate-700 text-white font-black rounded-lg transition-all duration-300 shadow-lg hover:shadow-emerald-500/50 transform hover:scale-105 active:scale-95 disabled:hover:scale-100 disabled:cursor-not-allowed">
+        {isLoading ? 'Kaydediliyor...' : (initialData ? 'Güncelle' : 'Veri Ekle')}
       </button>
     </form>
   );

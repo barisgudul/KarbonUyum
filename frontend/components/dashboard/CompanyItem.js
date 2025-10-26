@@ -37,15 +37,15 @@ export default function CompanyItem({ company }) {
         variant="destructive"
       />
 
-      <div className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition overflow-hidden">
+      <div className="group relative bg-gradient-to-br from-slate-800/50 to-slate-900/30 border-2 border-emerald-500/40 hover:border-emerald-400/60 rounded-2xl shadow-lg hover:shadow-emerald-500/30 transition-all duration-300 overflow-hidden backdrop-blur-xl">
         {/* Header - şirket özeti */}
         <div
-          className="p-6 cursor-pointer hover:bg-gray-50 flex items-center justify-between"
+          className="p-6 cursor-pointer hover:bg-emerald-500/5 flex items-center justify-between transition-colors"
           onClick={() => setIsExpanded(!isExpanded)}
         >
           <div className="flex-1">
-            <h3 className="text-xl font-bold text-gray-800">{company.name}</h3>
-            <p className="text-sm text-gray-600 mt-1">
+            <h3 className="text-xl font-black text-emerald-200">{company.name}</h3>
+            <p className="text-sm text-emerald-300/70 font-semibold mt-1">
               {company.industry_type && `Sektör: ${company.industry_type}`}
               {company.facilities && company.facilities.length > 0 && (
                 <span className="ml-4">📍 {company.facilities.length} tesis</span>
@@ -58,10 +58,9 @@ export default function CompanyItem({ company }) {
             <Button 
               variant="outline" 
               size="sm" 
-              className="flex items-center gap-1"
+              className="flex items-center gap-1 bg-emerald-500/20 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 hover:border-emerald-400/60 font-bold transition-all"
               onClick={(e) => {
                 e.stopPropagation();
-                // Global state'i kullanarak dialog'u aç
                 openDialog('editCompany', { companyData: company });
               }}
             >
@@ -76,7 +75,7 @@ export default function CompanyItem({ company }) {
                 setConfirmingDelete(true);
               }}
               disabled={isDeleting}
-              className="flex items-center gap-1"
+              className="flex items-center gap-1 bg-red-600/80 hover:bg-red-700 text-white font-bold transition-all"
             >
               <Trash2 className="w-4 h-4" /> Sil
             </Button>
@@ -84,9 +83,9 @@ export default function CompanyItem({ company }) {
             {/* Genişlet/Daralt İkonu */}
             <div className="ml-2">
               {isExpanded ? (
-                <ChevronUp className="w-5 h-5 text-gray-600" />
+                <ChevronUp className="w-5 h-5 text-emerald-400" />
               ) : (
-                <ChevronDown className="w-5 h-5 text-gray-600" />
+                <ChevronDown className="w-5 h-5 text-emerald-400" />
               )}
             </div>
           </div>
@@ -94,11 +93,11 @@ export default function CompanyItem({ company }) {
 
         {/* Detay Bölümü - Tesisler */}
         {isExpanded && (
-          <div className="border-t border-gray-200 p-6 bg-gray-50">
+          <div className="border-t border-emerald-500/20 p-6 bg-emerald-500/5">
             <div className="flex justify-between items-center mb-4">
-              <h4 className="font-semibold text-gray-700">Tesisler</h4>
+              <h4 className="font-black text-emerald-200">Tesisler</h4>
               <Button 
-                className="bg-green-600 hover:bg-green-700 text-white text-sm"
+                className="bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white font-bold text-sm rounded-lg shadow-lg hover:shadow-emerald-500/50 transition-all transform hover:scale-105"
                 onClick={() => openDialog('newFacility', { companyId: company.id })}
               >
                 + Yeni Tesis

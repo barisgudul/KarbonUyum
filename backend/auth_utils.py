@@ -31,7 +31,10 @@ def get_company_if_member(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
     
     # SQLAlchemy'nin `any` fonksiyonu, ilişkideki bir elemanın koşulu sağlayıp sağlamadığını kontrol eder.
-    if not db_company.members.filter(models.User.id == current_user.id).first():
+    # members collection'ında current_user var mı kontrolü
+    is_member = any(member.id == current_user.id for member in db_company.members)
+    
+    if not is_member:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not a member of this company")
         
     return db_company

@@ -9,7 +9,7 @@ import { Button } from '../ui/button';
 import ConfirmDialog from '../ConfirmDialog';
 import ActivityDataForm from '../ActivityDataForm';
 import CSVUploader from '../CSVUploader';
-import { ChevronDown, ChevronUp, Trash2, UploadCloud, Plus } from 'lucide-react';
+import { ChevronDown, ChevronUp, Trash2, Upload, Plus, FileText, Zap } from 'lucide-react';
 
 export default function FacilityItem({ facility, companyId }) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -39,18 +39,18 @@ export default function FacilityItem({ facility, companyId }) {
         variant="destructive"
       />
 
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition">
+      <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-emerald-500/40 hover:border-emerald-500/60 rounded-2xl overflow-hidden hover:shadow-lg hover:shadow-emerald-500/20 transition-all duration-300 backdrop-blur-xl">
         {/* Header */}
         <div
-          className="p-4 cursor-pointer hover:bg-gray-50 flex items-center justify-between"
+          className="p-4 cursor-pointer hover:bg-emerald-500/5 flex items-center justify-between transition-colors"
           onClick={() => setIsExpanded(!isExpanded)}
         >
           <div className="flex-1">
-            <h4 className="font-semibold text-gray-800">{facility.name}</h4>
-            <p className="text-sm text-gray-600 mt-1">
+            <h4 className="font-black text-emerald-200">{facility.name}</h4>
+            <p className="text-sm text-emerald-300/70 font-semibold mt-1">
               {facility.facility_type && `Tür: ${facility.facility_type}`}
               {facility.activity_data && facility.activity_data.length > 0 && (
-                <span className="ml-4">📊 {facility.activity_data.length} veri kaydı</span>
+                <span className="ml-4 flex items-center gap-1"><FileText className="w-4 h-4" /> {facility.activity_data.length} veri kaydı</span>
               )}
             </p>
           </div>
@@ -63,7 +63,7 @@ export default function FacilityItem({ facility, companyId }) {
                 e.stopPropagation();
                 openDialog('addActivity', { facilityId: facility.id, companyId });
               }}
-              className="flex items-center gap-1"
+              className="flex items-center gap-1 bg-emerald-500/20 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 hover:border-emerald-400/60 font-bold transition-all"
             >
               <Plus className="w-4 h-4" /> Aktivite
             </Button>
@@ -75,9 +75,9 @@ export default function FacilityItem({ facility, companyId }) {
                 e.stopPropagation();
                 openDialog('uploadCSV', { facilityId: facility.id });
               }}
-              className="flex items-center gap-1"
+              className="flex items-center gap-1 bg-emerald-500/20 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 hover:border-emerald-400/60 font-bold transition-all"
             >
-              <UploadCloud className="w-4 h-4" /> CSV
+              <Upload className="w-4 h-4" /> CSV
             </Button>
 
             <Button
@@ -88,16 +88,16 @@ export default function FacilityItem({ facility, companyId }) {
                 setConfirmingDelete(true);
               }}
               disabled={isDeleting}
-              className="flex items-center gap-1"
+              className="flex items-center gap-1 bg-red-600/80 hover:bg-red-700 text-white font-bold transition-all"
             >
               <Trash2 className="w-4 h-4" /> Sil
             </Button>
 
             <div className="ml-2">
               {isExpanded ? (
-                <ChevronUp className="w-5 h-5 text-gray-600" />
+                <ChevronUp className="w-5 h-5 text-emerald-400" />
               ) : (
-                <ChevronDown className="w-5 h-5 text-gray-600" />
+                <ChevronDown className="w-5 h-5 text-emerald-400" />
               )}
             </div>
           </div>
@@ -105,33 +105,33 @@ export default function FacilityItem({ facility, companyId }) {
 
         {/* Details */}
         {isExpanded && (
-          <div className="border-t border-gray-200 p-4 bg-gray-50">
+          <div className="border-t border-emerald-500/20 p-4 bg-emerald-500/5">
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <p className="text-sm text-gray-600">Adres</p>
-                <p className="font-semibold text-gray-800">{facility.address || '-'}</p>
+                <p className="text-sm text-emerald-300/70 font-semibold">Adres</p>
+                <p className="font-bold text-emerald-200">{facility.address || '-'}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Bölge</p>
-                <p className="font-semibold text-gray-800">{facility.region || '-'}</p>
+                <p className="text-sm text-emerald-300/70 font-semibold">Bölge</p>
+                <p className="font-bold text-emerald-200">{facility.region || '-'}</p>
               </div>
             </div>
 
             {/* Aktivite Verisi Listesi */}
             {facility.activity_data && facility.activity_data.length > 0 && (
               <div className="mt-4">
-                <h5 className="font-semibold text-gray-700 mb-2">Son Aktiviteler</h5>
+                <h5 className="font-black text-emerald-200 mb-3">Son Aktiviteler</h5>
                 <div className="space-y-2">
                   {facility.activity_data.slice(0, 5).map((activity) => (
-                    <div key={activity.id} className="p-2 bg-white rounded border border-gray-200 text-sm">
-                      <p className="text-gray-800">
-                        <span className="font-semibold">{activity.activity_type}</span>
+                    <div key={activity.id} className="p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20 text-sm">
+                      <p className="text-emerald-200">
+                        <span className="font-bold">{activity.activity_type}</span>
                         {' - '}
-                        <span className="text-gray-600">{activity.quantity} {activity.unit}</span>
+                        <span className="text-emerald-300/70">{activity.quantity} {activity.unit}</span>
                       </p>
                       {activity.co2e_emissions && (
-                        <p className="text-green-600 text-xs">
-                          CO₂e: {activity.co2e_emissions.toFixed(2)} kg
+                        <p className="text-emerald-400 text-xs font-semibold mt-1 flex items-center gap-1">
+                          <Zap className="w-3 h-3" /> CO₂e: {activity.co2e_emissions.toFixed(2)} kg
                         </p>
                       )}
                     </div>

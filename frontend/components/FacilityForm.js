@@ -2,9 +2,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import api from '../lib/api';
-import toast from 'react-hot-toast';  {/* YENİ: toast.promise kullanımı için */}
+import { useCreateFacility } from '../hooks/useCompanies';
+import toast from 'react-hot-toast';
 
 const FacilityForm = ({ companyId, onFacilityAdded, facilityToEdit }) => {
     const [name, setName] = useState('');
@@ -12,7 +11,8 @@ const FacilityForm = ({ companyId, onFacilityAdded, facilityToEdit }) => {
     const [address, setAddress] = useState('');
     const [facilityType, setFacilityType] = useState('production');
     const [surfaceArea, setSurfaceArea] = useState('');
-    const { token } = useAuth();
+
+    const { mutate: createFacility, isPending: isLoading } = useCreateFacility();
 
     useEffect(() => {
         if (facilityToEdit) {
@@ -39,7 +39,7 @@ const FacilityForm = ({ companyId, onFacilityAdded, facilityToEdit }) => {
             return;
         }
 
-        // YENİ: surface_area_m2 zorunlu (Benchmark için kritik)
+        // surface_area_m2 zorunlu (Benchmark için kritik)
         if (!surfaceArea || parseFloat(surfaceArea) <= 0) {
             toast.error('Tesis alanı zorunludur ve pozitif bir sayı olmalıdır (Benchmarking için gerekli).');
             return;
@@ -53,89 +53,79 @@ const FacilityForm = ({ companyId, onFacilityAdded, facilityToEdit }) => {
             surface_area_m2: surfaceArea ? parseFloat(surfaceArea) : null,
         };
 
-        // YENİ: toast.promise kullanımı (react-hot-toast standardı)
-        let request;
-        if (facilityToEdit) {
-            // Update existing facility
-            request = api.put(`/facilities/${facilityToEdit.id}`, facilityData, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-        } else {
-            // Create new facility
-            request = api.post(`/companies/${companyId}/facilities/`, facilityData, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-        }
-
-        toast.promise(request, {
-            loading: 'Kaydediliyor...',
-            success: (response) => {
-                onFacilityAdded(response.data);
-                // Reset form fields
-                setName('');
-                setCity('');
-                setAddress('');
-                setFacilityType('production');
-                setSurfaceArea('');
-                return facilityToEdit ? 'Başarıyla güncellendi!' : 'Başarıyla eklendi!';
-            },
-            error: (err) => err.response?.data?.detail || 'Bir hata oluştu.',
-        });
+        createFacility(
+            { companyId, data: facilityData },
+            {
+                onSuccess: (response) => {
+                    onFacilityAdded(response.data);
+                    // Reset form fields
+                    setName('');
+                    setCity('');
+                    setAddress('');
+                    setFacilityType('production');
+                    setSurfaceArea('');
+                },
+            }
+        );
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4 p-6 bg-gray-50 rounded-lg shadow-md mb-8">
-            <h3 className="text-xl font-semibold text-gray-800 border-b pb-2">{facilityToEdit ? 'Tesisi Düzenle' : 'Yeni Tesis Ekle'}</h3>
+        <form onSubmit={handleSubmit} className="space-y-4 p-6 bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-emerald-500/30 rounded-2xl shadow-lg backdrop-blur-xl">
+            <h3 className="text-lg font-black text-emerald-200 border-b border-emerald-500/20 pb-3">{facilityToEdit ? 'Tesisi Düzenle' : 'Yeni Tesis Ekle'}</h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label htmlFor="name" className="block text-sm font-medium text-gray-700">Tesis Adı</label>
+                    <label htmlFor="name" className="block text-sm font-bold text-emerald-300 mb-2">Tesis Adı *</label>
                     <input
                         type="text"
                         id="name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        disabled={isLoading}
+                        className="w-full px-4 py-2.5 bg-white/5 border border-emerald-500/30 rounded-lg text-white placeholder-emerald-300/50 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all disabled:opacity-50"
                         placeholder="Örn: Merkez Üretim Tesisi"
                         required
                     />
                 </div>
                  <div>
-                    <label htmlFor="facilityType" className="block text-sm font-medium text-gray-700">Tesis Tipi</label>
+                    <label htmlFor="facilityType" className="block text-sm font-bold text-emerald-300 mb-2">Tesis Tipi *</label>
                     <select
                         id="facilityType"
                         value={facilityType}
                         onChange={(e) => setFacilityType(e.target.value)}
-                        className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        disabled={isLoading}
+                        className="w-full px-4 py-2.5 bg-white/5 border border-emerald-500/30 rounded-lg text-white focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all appearance-none cursor-pointer disabled:opacity-50"
                     >
-                        <option value="production">Üretim</option>
-                        <option value="office">Ofis</option>
-                        <option value="warehouse">Depo</option>
-                        <option value="cold_storage">Soğuk Hava Deposu</option>
+                        <option value="production" className="bg-slate-800">Üretim</option>
+                        <option value="office" className="bg-slate-800">Ofis</option>
+                        <option value="warehouse" className="bg-slate-800">Depo</option>
+                        <option value="cold_storage" className="bg-slate-800">Soğuk Hava Deposu</option>
                     </select>
                 </div>
                 <div>
-                    <label htmlFor="city" className="block text-sm font-medium text-gray-700">Şehir</label>
+                    <label htmlFor="city" className="block text-sm font-bold text-emerald-300 mb-2">Şehir *</label>
                     <input
                         type="text"
                         id="city"
                         value={city}
                         onChange={(e) => setCity(e.target.value)}
-                        className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        disabled={isLoading}
+                        className="w-full px-4 py-2.5 bg-white/5 border border-emerald-500/30 rounded-lg text-white placeholder-emerald-300/50 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all disabled:opacity-50"
                         placeholder="Örn: İstanbul"
                     />
                 </div>
                 <div>
-                    <label htmlFor="surfaceArea" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="surfaceArea" className="block text-sm font-bold text-emerald-300 mb-2">
                         Isıtılan / Soğutulan Toplam Zemin Alanı (m²) 
-                        <span className="text-red-600 font-bold">*</span>
+                        <span className="text-emerald-400 font-black">*</span>
                     </label>
                     <input
                         type="number"
                         id="surfaceArea"
                         value={surfaceArea}
                         onChange={(e) => setSurfaceArea(e.target.value)}
-                        className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        disabled={isLoading}
+                        className="w-full px-4 py-2.5 bg-white/5 border border-emerald-500/30 rounded-lg text-white placeholder-emerald-300/50 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all disabled:opacity-50"
                         placeholder="Örn: 1500"
                         required 
                         min="0.1" 
@@ -145,23 +135,25 @@ const FacilityForm = ({ companyId, onFacilityAdded, facilityToEdit }) => {
             </div>
 
             <div>
-                <label htmlFor="address" className="block text-sm font-medium text-gray-700">Adres</label>
+                <label htmlFor="address" className="block text-sm font-bold text-emerald-300 mb-2">Adres</label>
                 <textarea
                     id="address"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
+                    disabled={isLoading}
                     rows="2"
-                    className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="w-full px-4 py-2.5 bg-white/5 border border-emerald-500/30 rounded-lg text-white placeholder-emerald-300/50 focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/20 transition-all disabled:opacity-50"
                     placeholder="Tesisin tam adresi"
                 ></textarea>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-3 pt-2">
                 <button
                     type="submit"
-                    className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    disabled={isLoading}
+                    className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-600 hover:via-teal-600 hover:to-cyan-600 disabled:from-slate-600 disabled:to-slate-700 text-white font-black rounded-lg transition-all duration-300 shadow-lg hover:shadow-emerald-500/50 transform hover:scale-105 active:scale-95 disabled:hover:scale-100 disabled:cursor-not-allowed"
                 >
-                    {facilityToEdit ? 'Tesisi Güncelle' : 'Tesisi Kaydet'}
+                    {isLoading ? 'Kaydediliyor...' : (facilityToEdit ? 'Tesisi Güncelle' : 'Tesisi Kaydet')}
                 </button>
             </div>
         </form>

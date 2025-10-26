@@ -2,9 +2,9 @@
 'use client';
 import { useAuth } from '../../context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useUIStore } from '../../stores/useUIStore';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../components/ui/dialog';
 import { Button } from '../../components/ui/button';
 import CompanyForm from '../../components/CompanyForm';
 import FacilityForm from '../../components/FacilityForm';
@@ -12,12 +12,17 @@ import ActivityDataForm from '../../components/ActivityDataForm';
 import CSVUploader from '../../components/CSVUploader';
 import SummaryPanel from '../../components/SummaryPanel';
 import CompanyList from '../../components/dashboard/CompanyList';
-import { LogOut, Plus, Leaf, Building2, Factory, Upload, Settings, TrendingUp } from 'lucide-react';
+import { LogOut, Plus, Leaf, Building2, Factory, Upload, Settings, TrendingUp, ChevronDown } from 'lucide-react';
+import { useCompanies } from '../../hooks/useCompanies';
 
 export default function DashboardPage() {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
   const { activeDialog, openDialog, closeDialog } = useUIStore();
+  const { data: companies } = useCompanies();
+  const [selectedCompanyId, setSelectedCompanyId] = useState(null);
+  const [selectedFacilityId, setSelectedFacilityId] = useState(null);
+  const [selectedCompany, setSelectedCompany] = useState(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -148,7 +153,10 @@ export default function DashboardPage() {
 
             {/* Card 2 - New Facility */}
             <button
-              onClick={() => openDialog('newFacility')}
+              onClick={() => {
+                setSelectedCompanyId(null);
+                openDialog('selectCompanyForFacility');
+              }}
               className="group relative overflow-hidden rounded-2xl transition-all duration-500"
             >
               <div className="absolute inset-0 bg-gradient-to-br from-teal-600 to-cyan-700 group-hover:from-teal-500 group-hover:to-cyan-600 transition-all duration-500"></div>
@@ -167,7 +175,11 @@ export default function DashboardPage() {
 
             {/* Card 3 - CSV Upload */}
             <button
-              onClick={() => openDialog('uploadCSV')}
+              onClick={() => {
+                setSelectedCompanyId(null);
+                setSelectedFacilityId(null);
+                openDialog('selectCompanyForCSV');
+              }}
               className="group relative overflow-hidden rounded-2xl transition-all duration-500"
             >
               <div className="absolute inset-0 bg-gradient-to-br from-cyan-600 to-emerald-700 group-hover:from-cyan-500 group-hover:to-emerald-600 transition-all duration-500"></div>
@@ -241,6 +253,7 @@ export default function DashboardPage() {
         <DialogContent className="sm:max-w-[500px] bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-emerald-500/40 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-3xl font-black bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">Yeni Şirket</DialogTitle>
+            <DialogDescription>Yeni bir şirket ekleyin ve veri yönetimini başlatın.</DialogDescription>
           </DialogHeader>
           <div className="bg-slate-700/30 rounded-xl p-1">
             <CompanyForm onFormSubmit={closeDialog} />
@@ -252,6 +265,7 @@ export default function DashboardPage() {
         <DialogContent className="sm:max-w-[500px] bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-emerald-500/40 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-3xl font-black bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">Şirketi Düzenle</DialogTitle>
+            <DialogDescription>Mevcut şirketinizin bilgilerini düzenleyin.</DialogDescription>
           </DialogHeader>
           <div className="bg-slate-700/30 rounded-xl p-1">
             <CompanyForm initialData={activeDialog?.data?.companyData} onFormSubmit={closeDialog} />
@@ -263,6 +277,7 @@ export default function DashboardPage() {
         <DialogContent className="sm:max-w-[600px] bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-emerald-500/40 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-3xl font-black bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">Yeni Tesis</DialogTitle>
+            <DialogDescription>Yeni bir tesis ekleyin ve veri kaydını başlatın.</DialogDescription>
           </DialogHeader>
           {activeDialog?.data?.companyId && (
             <div className="bg-slate-700/30 rounded-xl p-1">
@@ -276,6 +291,7 @@ export default function DashboardPage() {
         <DialogContent className="sm:max-w-[600px] bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-emerald-500/40 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-3xl font-black bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">Aktivite Kaydı</DialogTitle>
+            <DialogDescription>Yeni bir aktivite kaydı ekleyin.</DialogDescription>
           </DialogHeader>
           {activeDialog?.data?.facilityId && (
             <div className="bg-slate-700/30 rounded-xl p-1">
@@ -289,12 +305,292 @@ export default function DashboardPage() {
         <DialogContent className="sm:max-w-[700px] bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-emerald-500/40 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-3xl font-black bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">CSV Yükle</DialogTitle>
+            <DialogDescription>Toplu veri yüklemek için CSV dosyanızı seçin.</DialogDescription>
           </DialogHeader>
           {activeDialog?.data?.facilityId && (
             <div className="bg-slate-700/30 rounded-xl p-1">
               <CSVUploader facilityId={activeDialog.data.facilityId} onUploadSuccess={closeDialog} />
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Company Selector Dialog for Facility */}
+      <Dialog open={activeDialog?.name === 'selectCompanyForFacility'} onOpenChange={closeDialog}>
+        <DialogContent className="sm:max-w-[500px] bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-emerald-500/40 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-3xl font-black bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">Şirket Seç</DialogTitle>
+            <DialogDescription>Tesis eklemek istediğiniz şirketi seçin.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 max-h-[400px] overflow-y-auto">
+            {companies && companies.length > 0 ? (
+              companies.map((company) => (
+                <button
+                  key={company.id}
+                  onClick={() => {
+                    setSelectedCompanyId(company.id);
+                    closeDialog();
+                    openDialog('newFacility', { companyId: company.id });
+                  }}
+                  className="w-full p-4 bg-slate-700/40 hover:bg-slate-700/60 border border-emerald-500/30 hover:border-emerald-500/60 rounded-xl transition-all text-left group"
+                >
+                  <p className="font-bold text-emerald-300 group-hover:text-emerald-200">{company.name}</p>
+                  <p className="text-xs text-emerald-400/60 mt-1">{company.facilities?.length || 0} tesis</p>
+                </button>
+              ))
+            ) : (
+              <p className="text-center text-emerald-300/70 py-8">Şirket bulunamadı</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Company Selector Dialog for CSV */}
+      <Dialog open={activeDialog?.name === 'selectCompanyForCSV'} onOpenChange={closeDialog}>
+        <DialogContent className="sm:max-w-[500px] bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-emerald-500/40 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-3xl font-black bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">Şirket Seç</DialogTitle>
+            <DialogDescription>CSV yüklemek istediğiniz şirketi seçin.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 max-h-[400px] overflow-y-auto">
+            {companies && companies.length > 0 ? (
+              companies.map((company) => (
+                <button
+                  key={company.id}
+                  onClick={() => {
+                    setSelectedCompanyId(company.id);
+                    setSelectedCompany(company);
+                    closeDialog();
+                    openDialog('selectFacilityForCSV', { companyId: company.id, facilities: company.facilities });
+                  }}
+                  className="w-full p-4 bg-slate-700/40 hover:bg-slate-700/60 border border-emerald-500/30 hover:border-emerald-500/60 rounded-xl transition-all text-left group"
+                >
+                  <p className="font-bold text-emerald-300 group-hover:text-emerald-200">{company.name}</p>
+                  <p className="text-xs text-emerald-400/60 mt-1">{company.facilities?.length || 0} tesis</p>
+                </button>
+              ))
+            ) : (
+              <p className="text-center text-emerald-300/70 py-8">Şirket bulunamadı</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Facility Selector Dialog for CSV */}
+      <Dialog open={activeDialog?.name === 'selectFacilityForCSV'} onOpenChange={closeDialog}>
+        <DialogContent className="sm:max-w-[500px] bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-emerald-500/40 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-3xl font-black bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">Tesis Seç</DialogTitle>
+            <DialogDescription>CSV yüklemek istediğiniz tesisi seçin.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 max-h-[400px] overflow-y-auto">
+            {activeDialog?.data?.facilities && activeDialog.data.facilities.length > 0 ? (
+              activeDialog.data.facilities.map((facility) => (
+                <button
+                  key={facility.id}
+                  onClick={() => {
+                    setSelectedFacilityId(facility.id);
+                    closeDialog();
+                    openDialog('uploadCSV', { facilityId: facility.id });
+                  }}
+                  className="w-full p-4 bg-slate-700/40 hover:bg-slate-700/60 border border-emerald-500/30 hover:border-emerald-500/60 rounded-xl transition-all text-left group"
+                >
+                  <p className="font-bold text-emerald-300 group-hover:text-emerald-200">{facility.name}</p>
+                  <p className="text-xs text-emerald-400/60 mt-1">{facility.city}</p>
+                </button>
+              ))
+            ) : (
+              <p className="text-center text-emerald-300/70 py-8">Tesis bulunamadı</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Settings / Profile Management Dialog */}
+      <Dialog open={activeDialog?.name === 'settings'} onOpenChange={closeDialog}>
+        <DialogContent className="sm:max-w-[700px] bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-emerald-500/40 shadow-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-3xl font-black bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">Profil Yönetimi</DialogTitle>
+            <DialogDescription>Hesabınız, tercihler ve güvenlik ayarlarını yönetin.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5">
+            {/* Account Information Section */}
+            <div className="bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border border-emerald-500/40 rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="p-2.5 bg-emerald-500/20 rounded-lg">
+                  <Building2 className="w-5 h-5 text-emerald-400" />
+                </div>
+                <h4 className="text-lg font-black text-emerald-300">Hesap Bilgileri</h4>
+              </div>
+              <div className="space-y-4">
+                <div className="bg-slate-700/30 rounded-lg p-4 border border-emerald-500/20">
+                  <p className="text-xs font-bold text-emerald-400/70 uppercase tracking-wider mb-2">E-posta Adresi</p>
+                  <p className="text-white font-semibold break-all">{user?.email}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-slate-700/30 rounded-lg p-4 border border-emerald-500/20">
+                    <p className="text-xs font-bold text-emerald-400/70 uppercase tracking-wider mb-2">Üye Olma</p>
+                    <p className="text-white font-semibold">
+                      {user?.created_at ? new Date(user.created_at).toLocaleDateString('tr-TR') : 'Bilinmiyor'}
+                    </p>
+                  </div>
+                  <div className="bg-slate-700/30 rounded-lg p-4 border border-emerald-500/20">
+                    <p className="text-xs font-bold text-emerald-400/70 uppercase tracking-wider mb-2">Durum</p>
+                    <p className="text-white font-semibold flex items-center gap-2">
+                      <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
+                      Aktif
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Usage Statistics Section */}
+            <div className="bg-gradient-to-br from-cyan-500/10 to-emerald-500/10 border border-cyan-500/40 rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="p-2.5 bg-cyan-500/20 rounded-lg">
+                  <TrendingUp className="w-5 h-5 text-cyan-400" />
+                </div>
+                <h4 className="text-lg font-black text-cyan-300">Kullanım İstatistikleri</h4>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-slate-700/30 rounded-lg p-4 border border-cyan-500/20">
+                  <p className="text-xs font-bold text-cyan-400/70 uppercase tracking-wider mb-3">Şirketler</p>
+                  <p className="text-3xl font-black text-cyan-300">{companies?.length || 0}</p>
+                  <p className="text-xs text-cyan-400/50 mt-2">toplam</p>
+                </div>
+                <div className="bg-slate-700/30 rounded-lg p-4 border border-cyan-500/20">
+                  <p className="text-xs font-bold text-cyan-400/70 uppercase tracking-wider mb-3">Tesisler</p>
+                  <p className="text-3xl font-black text-cyan-300">
+                    {companies?.reduce((sum, c) => sum + (c.facilities?.length || 0), 0) || 0}
+                  </p>
+                  <p className="text-xs text-cyan-400/50 mt-2">toplam</p>
+                </div>
+                <div className="bg-slate-700/30 rounded-lg p-4 border border-cyan-500/20">
+                  <p className="text-xs font-bold text-cyan-400/70 uppercase tracking-wider mb-3">Veri Kaydı</p>
+                  <p className="text-3xl font-black text-cyan-300">
+                    {companies?.reduce((sum, c) => sum + (c.facilities?.reduce((fSum, f) => fSum + (f.activity_data?.length || 0), 0) || 0), 0) || 0}
+                  </p>
+                  <p className="text-xs text-cyan-400/50 mt-2">toplam</p>
+                </div>
+                <div className="bg-slate-700/30 rounded-lg p-4 border border-cyan-500/20">
+                  <p className="text-xs font-bold text-cyan-400/70 uppercase tracking-wider mb-3">Ortalama</p>
+                  <p className="text-3xl font-black text-cyan-300">
+                    {companies && companies.length > 0 
+                      ? (companies.reduce((sum, c) => sum + (c.facilities?.length || 0), 0) / companies.length).toFixed(1)
+                      : 0}
+                  </p>
+                  <p className="text-xs text-cyan-400/50 mt-2">tesis/şirket</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Preferences Section */}
+            <div className="bg-gradient-to-br from-teal-500/10 to-cyan-500/10 border border-teal-500/40 rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="p-2.5 bg-teal-500/20 rounded-lg">
+                  <Settings className="w-5 h-5 text-teal-400" />
+                </div>
+                <h4 className="text-lg font-black text-teal-300">Tercihler</h4>
+              </div>
+              <div className="space-y-3">
+                <div className="bg-slate-700/30 rounded-lg p-4 border border-teal-500/20 flex items-center justify-between hover:bg-slate-700/50 transition-all">
+                  <div>
+                    <p className="font-semibold text-white">E-posta Bildirimleri</p>
+                    <p className="text-xs text-teal-400/70 mt-1">Önemli güncellemeler hakkında bilgilendirme al</p>
+                  </div>
+                  <input type="checkbox" defaultChecked className="w-5 h-5 rounded accent-emerald-500" />
+                </div>
+                <div className="bg-slate-700/30 rounded-lg p-4 border border-teal-500/20 flex items-center justify-between hover:bg-slate-700/50 transition-all">
+                  <div>
+                    <p className="font-semibold text-white">Haftalık Özet</p>
+                    <p className="text-xs text-teal-400/70 mt-1">Her pazartesi günü aktivite özetini gönder</p>
+                  </div>
+                  <input type="checkbox" defaultChecked className="w-5 h-5 rounded accent-emerald-500" />
+                </div>
+                <div className="bg-slate-700/30 rounded-lg p-4 border border-teal-500/20 flex items-center justify-between hover:bg-slate-700/50 transition-all">
+                  <div>
+                    <p className="font-semibold text-white">Koyu Tema</p>
+                    <p className="text-xs text-teal-400/70 mt-1">Uygulamada koyu tema kullan</p>
+                  </div>
+                  <input type="checkbox" defaultChecked className="w-5 h-5 rounded accent-emerald-500" />
+                </div>
+              </div>
+            </div>
+
+            {/* Data & Privacy Section */}
+            <div className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/40 rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="p-2.5 bg-purple-500/20 rounded-lg">
+                  <Leaf className="w-5 h-5 text-purple-400" />
+                </div>
+                <h4 className="text-lg font-black text-purple-300">Veri & Gizlilik</h4>
+              </div>
+              <div className="space-y-3">
+                <button className="w-full bg-slate-700/30 hover:bg-slate-700/50 border border-purple-500/20 rounded-lg p-4 text-left transition-all group">
+                  <p className="font-semibold text-white group-hover:text-purple-300 transition-colors">Verilerim</p>
+                  <p className="text-xs text-purple-400/70 mt-1">Kişisel verilerinizi görüntüle ve yönetin</p>
+                </button>
+                <button className="w-full bg-slate-700/30 hover:bg-slate-700/50 border border-purple-500/20 rounded-lg p-4 text-left transition-all group">
+                  <p className="font-semibold text-white group-hover:text-purple-300 transition-colors">Gizlilik Politikası</p>
+                  <p className="text-xs text-purple-400/70 mt-1">Verilerinizin nasıl kullanıldığını öğrenin</p>
+                </button>
+                <button className="w-full bg-slate-700/30 hover:bg-slate-700/50 border border-purple-500/20 rounded-lg p-4 text-left transition-all group">
+                  <p className="font-semibold text-white group-hover:text-purple-300 transition-colors">Hizmet Şartları</p>
+                  <p className="text-xs text-purple-400/70 mt-1">Hizmet şartlarını ve koşullarını inceleyin</p>
+                </button>
+              </div>
+            </div>
+
+            {/* Security Section */}
+            <div className="bg-gradient-to-br from-orange-500/10 to-red-500/10 border border-orange-500/40 rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="p-2.5 bg-orange-500/20 rounded-lg">
+                  <Settings className="w-5 h-5 text-orange-400" />
+                </div>
+                <h4 className="text-lg font-black text-orange-300">Güvenlik</h4>
+              </div>
+              <div className="space-y-3">
+                <button className="w-full bg-slate-700/30 hover:bg-slate-700/50 border border-orange-500/20 rounded-lg p-4 text-left transition-all group">
+                  <p className="font-semibold text-white group-hover:text-orange-300 transition-colors">Şifre Değiştir</p>
+                  <p className="text-xs text-orange-400/70 mt-1">Hesabınızın şifresini güncelleyin</p>
+                </button>
+                <button className="w-full bg-slate-700/30 hover:bg-slate-700/50 border border-orange-500/20 rounded-lg p-4 text-left transition-all group">
+                  <p className="font-semibold text-white group-hover:text-orange-300 transition-colors">İki Faktörlü Kimlik Doğrulama</p>
+                  <p className="text-xs text-orange-400/70 mt-1">Hesabınıza ek güvenlik katmanı ekleyin</p>
+                </button>
+                <button className="w-full bg-slate-700/30 hover:bg-slate-700/50 border border-orange-500/20 rounded-lg p-4 text-left transition-all group">
+                  <p className="font-semibold text-white group-hover:text-orange-300 transition-colors">Aktif Oturumlar</p>
+                  <p className="text-xs text-orange-400/70 mt-1">Diğer cihazlarınızdaki oturumları yönetin</p>
+                </button>
+              </div>
+            </div>
+
+            {/* Danger Zone */}
+            <div className="bg-gradient-to-br from-red-500/10 to-red-600/10 border-2 border-red-500/40 rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="p-2.5 bg-red-500/20 rounded-lg">
+                  <LogOut className="w-5 h-5 text-red-400" />
+                </div>
+                <h4 className="text-lg font-black text-red-300">Tehlikeli İşlemler</h4>
+              </div>
+              <div className="space-y-3">
+                <button 
+                  onClick={logout}
+                  className="w-full px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-black rounded-lg transition-all duration-300 shadow-lg hover:shadow-red-600/50 transform hover:scale-105 active:scale-95"
+                >
+                  <span className="flex items-center justify-center gap-2">
+                    <LogOut className="w-5 h-5" />
+                    Çıkış Yap
+                  </span>
+                </button>
+                <button className="w-full bg-slate-700/30 hover:bg-slate-700/50 border border-red-500/20 rounded-lg p-4 text-left transition-all group">
+                  <p className="font-semibold text-red-300 group-hover:text-red-200 transition-colors">Hesabı Sil</p>
+                  <p className="text-xs text-red-400/70 mt-1">Hesabınızı ve tüm verilerinizi kalıcı olarak silin</p>
+                </button>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
