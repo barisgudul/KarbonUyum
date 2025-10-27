@@ -124,16 +124,30 @@ export default function FacilityItem({ facility, companyId }) {
                 <div className="space-y-2">
                   {facility.activity_data.slice(0, 5).map((activity) => (
                     <div key={activity.id} className="p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20 text-sm">
-                      <p className="text-emerald-200">
-                        <span className="font-bold">{activity.activity_type}</span>
-                        {' - '}
-                        <span className="text-emerald-300/70">{activity.quantity} {activity.unit}</span>
-                      </p>
-                      {activity.co2e_emissions && (
-                        <p className="text-emerald-400 text-xs font-semibold mt-1 flex items-center gap-1">
-                          <Zap className="w-3 h-3" /> CO₂e: {activity.co2e_emissions.toFixed(2)} kg
-                        </p>
-                      )}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <p className="text-emerald-200">
+                            <span className="font-bold">{activity.activity_type}</span>
+                            {' - '}
+                            <span className="text-emerald-300/70">{activity.quantity} {activity.unit}</span>
+                          </p>
+                          <p className="text-emerald-400/70 text-xs mt-1">
+                            {new Date(activity.start_date).toLocaleDateString('tr-TR')} - {new Date(activity.end_date).toLocaleDateString('tr-TR')}
+                          </p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          {activity.co2e_emissions !== null && activity.co2e_emissions !== undefined ? (
+                            <div className="flex flex-col items-end">
+                              <p className="text-emerald-400 text-sm font-black flex items-center gap-1">
+                                <Zap className="w-3 h-3" /> {activity.co2e_emissions.toFixed(2)} kg
+                              </p>
+                              <p className="text-emerald-500/70 text-xs font-semibold">CO₂e emisyonu</p>
+                            </div>
+                          ) : (
+                            <p className="text-orange-400 text-xs font-semibold">Hesaplanıyor...</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>

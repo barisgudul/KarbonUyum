@@ -9,6 +9,7 @@ import models
 
 # Rol Enum'ını modellerden import ediyoruz
 from models import ActivityType, CompanyMemberRole, ScopeType
+from typing import Literal
 
 # -- Strict Validation Base Config --
 class StrictBaseModel(BaseModel):
@@ -65,9 +66,13 @@ class ActivityData(ActivityDataBase):
     id: int
     facility_id: int
     scope: ScopeType
-    calculated_co2e_kg: Optional[float] = None
+    calculated_co2e_kg: Optional[float] = Field(None, alias="co2e_emissions", serialization_alias="co2e_emissions")
     is_fallback_calculation: bool = False  # Yasal şeffaflık için
-    class Config: from_attributes = True
+    
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True
+    )
 
 # -- Facility Schemas --
 class FacilityBase(BaseModel):
@@ -359,3 +364,76 @@ class BenchmarkReportResponse(BaseModel):
 class HealthCheckResponse(BaseModel):
     status: str
     message: str
+
+
+# -- Climatiq API Schemas (Proaktif Şema Doğrulaması) --
+class ClimatiqSelector(BaseModel):
+    """
+    Climatiq API emission_factor selector şeması.
+    API'ye gönderilecek faktör seçici bilgilerini doğrular.
+    
+    Bu model, Climatiq dokümantasyonuna göre oluşturulmuştur:
+    https://www.climatiq.io/docs/api-reference/estimate
+    
+    NOT: year parametresi opsiyonel bırakıldı. Year verilmezse,
+    Climatiq otomatik olarak en güncel mevcut veriyi kullanır.
+    """
+    activity_id: str = Field(..., description="Climatiq aktivite ID'si (örn: electricity-supply_grid-source_supplier_mix)")
+    region: str = Field(default="TR", description="ISO 3166-1 alpha-2 bölge kodu")
+    year: Optional[int] = Field(default=None, description="Hesaplama yılı (opsiyonel - belirtilmezse en güncel veri kullanılır)")
+    data_version: str = Field(default="^26", description="Veri sürümü (örn: ^26)")
+    
+    model_config = ConfigDict(extra="forbid")
+
+
+class ClimatiqEnergyParameters(BaseModel):
+    """
+    Climatiq API için enerji tüketimi parametreleri (elektrik için).
+    """
+    energy: float = Field(..., gt=0, description="Enerji miktarı")
+    energy_unit: Literal["kWh", "MWh", "GJ"] = Field(default="kWh", description="Enerji birimi")
+    
+    model_config = ConfigDict(extra="forbid")
+
+
+class ClimatiqVolumeParameters(BaseModel):
+    """
+    Climatiq API için hacim parametreleri (yakıtlar için).
+    """
+    volume: float = Field(..., gt=0, description="Hacim miktarı")
+    volume_unit: Literal["l", "m3", "gal"] = Field(..., description="Hacim birimi")
+    
+    model_config = ConfigDict(extra="forbid")
+
+
+class ClimatiqEstimateRequest(BaseModel):
+    """
+    Climatiq API /estimate endpoint'ine gönderilecek tam istek yapısı.
+    """
+    emission_factor: ClimatiqSelector
+    parameters: dict  # ClimatiqEnergyParameters veya ClimatiqVolumeParameters olabilir
+    
+    model_config = ConfigDict(extra="forbid")
+
+
+class ClimatiqEmissionFactor(BaseModel):
+    """
+    Climatiq API'den dönen emisyon faktörü bilgisi.
+    """
+    id: Optional[str] = None
+    factor: Optional[float] = None
+    factor_unit: Optional[str] = None
+    year: Optional[int] = None  # API'nin kullandığı faktörün yılı
+    
+    model_config = ConfigDict(extra="allow")  # API ekstra alanlar dönebilir
+
+
+class ClimatiqEstimateResponse(BaseModel):
+    """
+    Climatiq API /estimate endpoint'inden dönen yanıt yapısı.
+    """
+    co2e: float = Field(..., description="Toplam CO2 eşdeğeri (kg)")
+    co2e_unit: Optional[str] = "kg"
+    emission_factor: Optional[ClimatiqEmissionFactor] = None
+    
+    model_config = ConfigDict(extra="allow")  # API ekstra alanlar dönebilir

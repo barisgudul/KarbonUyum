@@ -307,7 +307,7 @@ def create_activity_data_for_facility(
     ])
 
     # YENİ: Climatiq API ile hesaplama
-    calc_service = get_calculation_service()
+    calc_service = get_calculation_service(db=db)
     calculation_result = calc_service.calculate_for_activity(activity_data)
 
     # Veritabanına kaydet (scope ve fallback bilgisi ile)
@@ -378,7 +378,7 @@ def update_activity_data(
     ])
 
     # YENİ: Climatiq API ile hesaplama
-    calc_service = get_calculation_service()
+    calc_service = get_calculation_service(db=db)
     calculation_result = calc_service.calculate_for_activity(activity_data)
 
     # Verileri güncelle

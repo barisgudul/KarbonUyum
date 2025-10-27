@@ -1,15 +1,10 @@
 # backend/services/climatiq_service.py
-"""
-Climatiq API entegrasyonu için servis.
-Bu servis, emisyon faktörlerini ve hesaplamaları Climatiq'ten alır.
-Yasal uyumluluk ve güncel faktörler için harici API kullanır.
-"""
 
 import logging
 import os
-from typing import Optional
 import httpx
 from datetime import date
+from fastapi import HTTPException, status
 
 import models
 import schemas
@@ -17,171 +12,112 @@ from .calculation_interface import ICalculationService
 
 logger = logging.getLogger(__name__)
 
-# Climatiq API Yapılandırması
-CLIMATIQ_API_KEY = os.getenv("CLIMATIQ_API_KEY")
-CLIMATIQ_API_BASE_URL = "https://api.climatiq.io/data/v1"
-
-
 class ClimatiqService(ICalculationService):
     """
     Climatiq API ile emisyon hesaplamaları yapan servis.
-    
-    Bu servis, güvenilir ve uluslararası standartlara uygun
-    emisyon faktörleri sağlar.
-    
-    Implements ICalculationService interface for pluggable provider architecture.
+    Bu servis, güvenilir ve uluslararası standartlara uygun emisyon faktörleri sağlar.
     """
     
+    API_BASE_URL = "https://api.climatiq.io/data/v1/estimate"
+
     def __init__(self, year: int = None):
-        """
-        Args:
-            year: Hesaplama için kullanılacak yıl. None ise mevcut yıl.
-        """
-        self.year = year if year is not None else date.today().year
+        # Yıl parametresi artık doğrudan kullanılmıyor, ancak arayüz uyumluluğu için tutuluyor.
+        self.api_key = os.getenv("CLIMATIQ_API_KEY")
         self.api_calls_count = 0
         self.api_failures_count = 0
         
-        if not CLIMATIQ_API_KEY:
+        if not self.api_key:
             logger.warning(
                 "CLIMATIQ_API_KEY environment variable is not set. "
                 "Service will fail on API calls."
             )
     
     def get_provider_name(self) -> str:
-        """Get the name of this provider."""
         return "climatiq"
     
     def health_check(self) -> bool:
-        """
-        Check if Climatiq API is available.
-        
-        Returns True if API key is configured, False otherwise.
-        Note: This does not make an actual API call to avoid costs.
-        """
-        return bool(CLIMATIQ_API_KEY)
-    
-    def _get_scope(self, activity_type: models.ActivityType) -> models.ScopeType:
-        """
-        Aktivite tipine göre GHG Protokolü Scope belirler.
-        """
-        if activity_type == models.ActivityType.electricity:
-            return models.ScopeType.scope_2
-        elif activity_type in [models.ActivityType.natural_gas, models.ActivityType.diesel_fuel]:
-            return models.ScopeType.scope_1
-        else:
-            logger.warning(f"Bilinmeyen aktivite tipi: {activity_type}. Scope 1 varsayıldı.")
-            return models.ScopeType.scope_1
-    
-    def _map_activity_to_climatiq_id(self, activity_type: models.ActivityType) -> str:
-        """
-        ActivityType'ı Climatiq'in beklediği activity_id'ye map eder.
-        
-        Climatiq activity_id formatı: "category-subcategory-region"
-        Örnek: "electricity-supply_grid-tr"
-        """
-        activity_mapping = {
-            models.ActivityType.electricity: "electricity-supply_grid",
-            models.ActivityType.natural_gas: "gas-natural_gas_combustion",
-            models.ActivityType.diesel_fuel: "fuel-diesel_combustion"
-        }
-        
-        return activity_mapping.get(activity_type, "unknown")
-    
-    def _map_unit_to_climatiq(self, unit: str, activity_type: models.ActivityType) -> str:
-        """
-        Kullanıcı birimini Climatiq'in beklediği birime çevirir.
-        """
-        unit_lower = unit.lower()
-        
-        # Elektrik birimleri
-        if activity_type == models.ActivityType.electricity:
-            unit_mapping = {
-                'kwh': 'kWh',
-                'mwh': 'MWh',
-                'gj': 'GJ'
-            }
-            return unit_mapping.get(unit_lower, 'kWh')
-        
-        # Doğalgaz birimleri
-        elif activity_type == models.ActivityType.natural_gas:
-            unit_mapping = {
-                'm3': 'm3',
-                'l': 'l',
-                'litre': 'l'
-            }
-            return unit_mapping.get(unit_lower, 'm3')
-        
-        # Dizel yakıt birimleri
-        elif activity_type == models.ActivityType.diesel_fuel:
-            unit_mapping = {
-                'l': 'l',
-                'litre': 'l',
-                'm3': 'm3'
-            }
-            return unit_mapping.get(unit_lower, 'l')
-        
-        return unit
+        return bool(self.api_key)
     
     def calculate_for_activity(
         self, 
         activity_data: schemas.ActivityDataBase
     ) -> schemas.EmissionCalculationResult:
-        """
-        Climatiq API kullanarak aktivite için emisyon hesaplar.
+        if not self.health_check():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
+                detail="Climatiq hesaplama servisi yapılandırılmamış (API anahtarı eksik)."
+            )
+
+        headers = {"Authorization": f"Bearer {self.api_key}"}
         
-        Args:
-            activity_data: Hesaplanacak aktivite verisi
-            
-        Returns:
-            EmissionCalculationResult: Detaylı hesaplama sonucu
-            
-        Raises:
-            HTTPError: API iletişim hatası
-            ValueError: Geçersiz veri
-        """
-        scope = self._get_scope(activity_data.activity_type)
-        activity_id = self._map_activity_to_climatiq_id(activity_data.activity_type)
-        climatiq_unit = self._map_unit_to_climatiq(
-            activity_data.unit, 
-            activity_data.activity_type
-        )
-        
-        # Climatiq API endpoint'i
-        url = f"{CLIMATIQ_API_BASE_URL}/estimate"
-        
-        # API isteği için payload
-        payload = {
-            "emission_factor": {
-                "activity_id": f"{activity_id}-tr",  # Türkiye için
+        emission_factor_payload = {}
+        params_payload = {}
+        scope = models.ScopeType.scope_1
+
+        activity_type = activity_data.activity_type
+
+        if activity_type == models.ActivityType.electricity:
+            scope = models.ScopeType.scope_2
+            emission_factor_payload = {
+                "activity_id": "electricity-supply_grid-source_supplier_mix",
                 "region": "TR",
-                "year": str(self.year)
-            },
-            "parameters": {
-                "energy": activity_data.quantity,
-                "energy_unit": climatiq_unit
+                # DÜZELTME: 'year' parametresi kaldırıldı. 
+                # Bu, Climatiq'in bu bölge için mevcut en güncel veriyi otomatik olarak seçmesini sağlar.
+                "data_version": "^26"
             }
-        }
+            params_payload = {
+                "energy": activity_data.quantity, 
+                "energy_unit": activity_data.unit
+            }
+
+        elif activity_type == models.ActivityType.natural_gas:
+            scope = models.ScopeType.scope_1
+            emission_factor_payload = {
+                "activity_id": "fuel-type_natural_gas-fuel_use_stationary",
+                # DÜZELTME: 'year' kaldırıldı.
+                "data_version": "^1"
+            }
+            params_payload = {
+                "volume": activity_data.quantity, 
+                "volume_unit": activity_data.unit
+            }
+
+        elif activity_type == models.ActivityType.diesel_fuel:
+            scope = models.ScopeType.scope_1
+            emission_factor_payload = {
+                "activity_id": "fuel-type_diesel_oil-fuel_use_stationary_combustion",
+                # DÜZELTME: 'year' kaldırıldı.
+                "data_version": "^14"
+            }
+            params_payload = {
+                "volume": activity_data.quantity, 
+                "volume_unit": activity_data.unit
+            }
         
-        headers = {
-            "Authorization": f"Bearer {CLIMATIQ_API_KEY}",
-            "Content-Type": "application/json"
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail=f"Aktivite tipi '{activity_type}' için hesaplama desteklenmiyor."
+            )
+
+        api_payload = {
+            "emission_factor": emission_factor_payload, 
+            "parameters": params_payload
         }
-        
+
         try:
             with httpx.Client(timeout=10.0) as client:
-                response = client.post(url, json=payload, headers=headers)
+                response = client.post(self.API_BASE_URL, json=api_payload, headers=headers)
                 response.raise_for_status()
             
             self.api_calls_count += 1
             data = response.json()
+            total_co2e_kg = data.get("co2e")
             
-            # Climatiq'ten gelen CO2e değeri (kg cinsinden)
-            total_co2e_kg = data.get("co2e", 0.0)
-            
-            # Kullanılan emisyon faktörü bilgisi
-            emission_factor_info = data.get("emission_factor", {})
-            emission_factor_used = emission_factor_info.get("id", "unknown")
-            emission_factor_value = emission_factor_info.get("factor", 0.0)
+            if total_co2e_kg is None:
+                raise ValueError("Climatiq yanıtında 'co2e' değeri bulunamadı.")
+
+            ef_used = data.get("emission_factor", {})
             
             logger.info(
                 f"Climatiq API call successful. Activity: {activity_data.activity_type}, "
@@ -191,71 +127,41 @@ class ClimatiqService(ICalculationService):
             return schemas.EmissionCalculationResult(
                 total_co2e_kg=total_co2e_kg,
                 scope=scope,
-                emission_factor_used=emission_factor_used,
-                emission_factor_value=emission_factor_value,
-                calculation_year=self.year,
-                is_fallback=False  # Başarılı API çağrısı
+                emission_factor_used=ef_used.get("id", "unknown"),
+                emission_factor_value=ef_used.get("factor", 0.0),
+                calculation_year=ef_used.get("year", date.today().year), # API'nin kullandığı yılı yanıttan al
+                is_fallback=False
             )
             
         except httpx.HTTPStatusError as e:
             self.api_failures_count += 1
             error_detail = e.response.text
             logger.error(
-                f"Climatiq API error (status {e.response.status_code}): {error_detail}. "
-                f"Failures so far: {self.api_failures_count}"
+                f"Climatiq API Hatası (status {e.response.status_code}): {error_detail}. "
+                f"Gönderilen Payload: {api_payload}. Failures so far: {self.api_failures_count}"
             )
-            
-            # API hatası durumunda fallback: basit hesaplama
-            logger.warning("Falling back to simplified calculation")
-            return self._fallback_calculation(activity_data, scope)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, 
+                detail=f"Hesaplama Sağlayıcısı Hatası: {error_detail}"
+            )
             
         except httpx.RequestError as e:
             self.api_failures_count += 1
-            logger.error(f"Climatiq API request error: {str(e)}. Failures so far: {self.api_failures_count}")
-            return self._fallback_calculation(activity_data, scope)
+            logger.error(f"Climatiq API bağlantı hatası: {str(e)}. Failures so far: {self.api_failures_count}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
+                detail="Hesaplama sağlayıcısına bağlanılamadı."
+            )
         
         except Exception as e:
             self.api_failures_count += 1
-            logger.error(f"Unexpected error in Climatiq service: {str(e)}", exc_info=True)
-            return self._fallback_calculation(activity_data, scope)
-    
-    def _fallback_calculation(
-        self, 
-        activity_data: schemas.ActivityDataBase,
-        scope: models.ScopeType
-    ) -> schemas.EmissionCalculationResult:
-        """
-        API erişilemediğinde basit fallback hesaplama.
-        Varsayılan faktörler kullanır (DEFRA 2023 verileri).
-        """
-        # Basit fallback faktörleri (kg CO2e per unit)
-        fallback_factors = {
-            models.ActivityType.electricity: 0.475,  # kg CO2e/kWh (Türkiye şebeke ortalaması)
-            models.ActivityType.natural_gas: 2.016,  # kg CO2e/m3
-            models.ActivityType.diesel_fuel: 2.687   # kg CO2e/litre
-        }
-        
-        factor = fallback_factors.get(activity_data.activity_type, 0.0)
-        total_co2e_kg = activity_data.quantity * factor
-        
-        logger.warning(
-            f"Using fallback factor {factor} for {activity_data.activity_type}. "
-            "This may not reflect current standards."
-        )
-        
-        return schemas.EmissionCalculationResult(
-            total_co2e_kg=total_co2e_kg,
-            scope=scope,
-            emission_factor_used="fallback_defra_2023",
-            emission_factor_value=factor,
-            calculation_year=self.year,
-            is_fallback=True  # ⚠️ API erişilemedi, tahmini hesaplama
-        )
+            logger.error(f"Climatiq servisinde beklenmedik hata: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                detail="Hesaplama sırasında beklenmedik bir sunucu hatası oluştu."
+            )
     
     def calculate_co2e(self, activity_data: schemas.ActivityDataBase) -> float:
-        """
-        Basit CO2e hesaplama (geriye dönük uyumluluk için).
-        """
         result = self.calculate_for_activity(activity_data)
         return result.total_co2e_kg
 
@@ -263,4 +169,3 @@ class ClimatiqService(ICalculationService):
 def get_climatiq_service(year: int = None) -> ClimatiqService:
     """Dependency injection için yardımcı fonksiyon."""
     return ClimatiqService(year)
-
