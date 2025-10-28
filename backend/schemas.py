@@ -8,7 +8,7 @@ from pydantic import BaseModel, EmailStr, Field, computed_field, ConfigDict, fie
 import models
 
 # Rol Enum'ını modellerden import ediyoruz
-from models import ActivityType, CompanyMemberRole, ScopeType
+from models import ActivityType, CompanyMemberRole, ScopeType, IndustryType
 from typing import Literal
 
 # -- Strict Validation Base Config --
@@ -41,6 +41,8 @@ class ActivityDataBase(BaseModel):
     end_date: date
 
 class ActivityDataCreate(ActivityDataBase):
+    cost_tl: Optional[float] = Field(None, description="Fatura tutarı (TL)")  # YENİ: Birim maliyet hesaplama için
+    
     @field_validator('quantity')
     @classmethod
     def validate_quantity(cls, v):
@@ -68,6 +70,7 @@ class ActivityData(ActivityDataBase):
     scope: ScopeType
     calculated_co2e_kg: Optional[float] = Field(None, alias="co2e_emissions", serialization_alias="co2e_emissions")
     is_fallback_calculation: bool = False  # Yasal şeffaflık için
+    is_simulation: bool = False  # Onboarding simülasyon verisi
     
     model_config = ConfigDict(
         from_attributes=True,
@@ -437,3 +440,452 @@ class ClimatiqEstimateResponse(BaseModel):
     emission_factor: Optional[ClimatiqEmissionFactor] = None
     
     model_config = ConfigDict(extra="allow")  # API ekstra alanlar dönebilir
+
+
+# YENİ: IndustryTemplate Schemas (Onboarding için)
+class IndustryTemplateBase(BaseModel):
+    industry_name: str
+    industry_type: IndustryType
+    typical_electricity_kwh_per_employee: float
+    typical_gas_m3_per_employee: float
+    typical_fuel_liters_per_vehicle: float
+    typical_electricity_cost_ratio: float = 0.03
+    typical_gas_cost_ratio: float = 0.02
+    best_in_class_electricity_kwh: Optional[float] = None
+    average_electricity_kwh: Optional[float] = None
+    description: Optional[str] = None
+
+class IndustryTemplateCreate(IndustryTemplateBase):
+    pass
+
+class IndustryTemplate(IndustryTemplateBase):
+    id: int
+    created_at: date
+    
+    class Config:
+        from_attributes = True
+
+# YENİ: Onboarding Request/Response Schemas
+class OnboardingRequest(StrictBaseModel):
+    industry_name: str
+    employee_count: int = Field(..., gt=0, le=10000, description="Çalışan sayısı")
+    vehicle_count: int = Field(default=1, ge=0, le=1000, description="Araç sayısı")
+    facility_name: Optional[str] = Field(default="Ana Tesis", max_length=100)
+    facility_city: Optional[str] = Field(default="İstanbul", max_length=50)
+
+class OnboardingResponse(BaseModel):
+    message: str
+    company_id: int
+    facility_id: int
+    simulated_data_count: int
+    dashboard_ready: bool = True
+
+# YENİ: Wizard Submit Schemas
+class WizardDataItem(StrictBaseModel):
+    activity_type: ActivityType
+    quantity: float = Field(..., gt=0)
+    cost: float = Field(..., gt=0, description="Fatura tutarı (TL)")
+    start_date: date
+    end_date: date
+    
+    @field_validator('end_date')
+    @classmethod
+    def validate_dates(cls, v, info):
+        if 'start_date' in info.data and v < info.data['start_date']:
+            raise ValueError('Bitiş tarihi başlangıç tarihinden önce olamaz')
+        return v
+
+class WizardSubmitRequest(StrictBaseModel):
+    company_id: int
+    facility_id: int
+    data_items: List[WizardDataItem]
+    clear_simulation: bool = True  # Simülasyon verisini temizle
+
+class WizardSubmitResponse(BaseModel):
+    message: str
+    created_count: int
+    deleted_simulation_count: int
+    financials_updated: bool
+    roi_potential_tl: Optional[float] = None
+
+# YENİ: ROI Analysis Schemas
+class ROIOpportunity(BaseModel):
+    measure: str
+    name: str
+    description: str
+    annual_savings_tl: float
+    annual_savings_kwh: Optional[float] = 0
+    investment_tl: float
+    payback_months: float
+    difficulty: str
+    co2_reduction_tons: float
+
+class QuickWin(BaseModel):
+    name: str
+    savings_tl: float
+    investment_tl: float
+    payback_months: float
+    priority: str
+
+class BenchmarkComparison(BaseModel):
+    industry_average_gap: float
+    best_in_class_gap: float
+    efficiency_score: float
+    message: str
+
+class ROIAnalysisResponse(BaseModel):
+    company_id: int
+    analysis_period_months: int
+    current_annual_cost_tl: float
+    potential_annual_savings_tl: float
+    savings_percentage: float
+    total_investment_required_tl: float
+    payback_period_months: float
+    top_opportunities: List[ROIOpportunity]
+    benchmark_comparison: BenchmarkComparison
+    quick_wins: List[QuickWin]
+    message: str
+
+# YENİ: CBAM Report Schemas
+class CBAMReportRequest(StrictBaseModel):
+    start_date: date
+    end_date: date
+    reporting_period: Optional[str] = None
+    
+    @field_validator('end_date')
+    @classmethod
+    def validate_dates(cls, v, info):
+        if 'start_date' in info.data and v < info.data['start_date']:
+            raise ValueError('Bitiş tarihi başlangıç tarihinden önce olamaz')
+        return v
+
+class CBAMReportResponse(BaseModel):
+    report_id: str
+    company_name: str
+    reporting_period: str
+    total_emissions_tco2e: float
+    xml_content: str
+    generation_date: str
+    status: str = "SUCCESS"
+
+# YENİ: Notification Schemas (Modül 2.1)
+class NotificationCreate(StrictBaseModel):
+    notification_type: str  # 'anomaly', 'suggestion', 'update'
+    title: str
+    message: str
+    company_id: Optional[int] = None
+    facility_id: Optional[int] = None
+    action_url: Optional[str] = None
+
+class Notification(BaseModel):
+    id: int
+    user_id: int
+    notification_type: str
+    title: str
+    message: str
+    company_id: Optional[int] = None
+    facility_id: Optional[int] = None
+    is_read: bool = False
+    action_url: Optional[str] = None
+    created_at: date
+    
+    class Config:
+        from_attributes = True
+
+class NotificationList(BaseModel):
+    notifications: List[Notification]
+    unread_count: int
+    total_count: int
+
+# YENİ: Invoice Schemas (Modül 2.2 - OCR Sistemi)
+class InvoiceExtractedData(StrictBaseModel):
+    """OCR'dan okunan fatura verisi"""
+    activity_type: Optional[str] = None  # "electricity", "natural_gas", "diesel_fuel"
+    quantity: Optional[float] = None
+    cost_tl: Optional[float] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    extracted_text: Optional[str] = None  # Ham OCR çıktısı (debug)
+
+class InvoiceCreate(StrictBaseModel):
+    """Fatura yükleme isteği"""
+    facility_id: int
+    # Dosya multipart/form-data ile gönderilir, schema'da tutmuyoruz
+
+class InvoiceVerify(StrictBaseModel):
+    """Kullanıcının OCR sonuçlarını doğrulaması"""
+    extracted_data: InvoiceExtractedData
+    verification_notes: Optional[str] = None
+
+class Invoice(BaseModel):
+    """Fatura detayları"""
+    id: int
+    facility_id: int
+    filename: str
+    status: str  # "pending", "processing", "completed", "failed", "verified"
+    extracted_quantity: Optional[float] = None
+    extracted_cost_tl: Optional[float] = None
+    extracted_start_date: Optional[date] = None
+    extracted_end_date: Optional[date] = None
+    extracted_activity_type: Optional[str] = None
+    is_verified: bool = False
+    activity_data_id: Optional[int] = None
+    created_at: date
+    processed_at: Optional[date] = None
+    
+    class Config:
+        from_attributes = True
+
+class InvoiceList(BaseModel):
+    """Fatura listesi"""
+    invoices: List[Invoice]
+    total: int
+    pending_count: int
+    processing_count: int
+
+# YENİ: Report Schemas (Modül 2.1 - Asenkron Raporlama)
+class ReportCreate(StrictBaseModel):
+    """Rapor oluşturma isteği"""
+    report_type: str  # "cbam_xml", "roi_analysis", "combined"
+    start_date: date
+    end_date: date
+    period_name: Optional[str] = None
+    notify_user: bool = True
+
+class ReportStatus(BaseModel):
+    """Rapor durumu"""
+    id: int
+    company_id: int
+    report_type: str
+    status: str  # "pending", "processing", "completed", "failed"
+    celery_task_id: Optional[str] = None
+    file_path: Optional[str] = None
+    download_count: int = 0
+    total_emissions_tco2e: Optional[float] = None
+    total_savings_tl: Optional[float] = None
+    error_message: Optional[str] = None
+    created_at: date
+    completed_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+class ReportList(BaseModel):
+    """Rapor listesi"""
+    reports: List[ReportStatus]
+    total: int
+    pending_count: int
+    processing_count: int
+    completed_count: int
+
+class ReportGenerationResponse(BaseModel):
+    """Rapor oluşturma başlatma yanıtı"""
+    report_id: int
+    celery_task_id: str
+    status: str
+    message: str
+    estimated_time_seconds: int  # Tahmin edilen işlem süresi
+
+# YENİ: Tedarikçi Ağı Schemas (Modül 3.1)
+
+class SupplierBase(StrictBaseModel):
+    """Tedarikçi temel bilgileri"""
+    company_name: str
+    email: str
+    contact_person: Optional[str] = None
+    phone: Optional[str] = None
+    industry_type: Optional[str] = None
+    product_category: Optional[str] = None
+
+class SupplierCreate(SupplierBase):
+    """Tedarikçi oluşturma"""
+    pass
+
+class Supplier(SupplierBase):
+    """Tedarikçi detayları"""
+    id: int
+    is_active: bool
+    verified: bool
+    created_at: date
+    
+    class Config:
+        from_attributes = True
+
+class ProductFootprintBase(StrictBaseModel):
+    """Ürün ayak izi temel bilgileri"""
+    product_name: str
+    product_category: str
+    unit: str  # "ton", "kg", "metre" vs
+    co2e_per_unit_kg: float
+    product_code: Optional[str] = None
+    data_source: Optional[str] = None
+    external_id: Optional[str] = None
+
+class ProductFootprintCreate(ProductFootprintBase):
+    """Ürün ayak izi oluşturma"""
+    pass
+
+class ProductFootprint(ProductFootprintBase):
+    """Ürün ayak izi detayları"""
+    id: int
+    supplier_id: int
+    is_verified: bool
+    created_at: date
+    
+    class Config:
+        from_attributes = True
+
+class SupplierInviteRequest(StrictBaseModel):
+    """Tedarikçi davet isteği"""
+    supplier_email: str
+    supplier_company_name: str
+    relationship_type: str = "supplier"
+
+class SupplierInviteResponse(BaseModel):
+    """Tedarikçi davet yanıtı"""
+    id: int
+    status: str
+    invite_token: str
+    invited_at: datetime
+    expires_at: datetime
+    message: str
+
+class SupplierInvitation(BaseModel):
+    """Tedarikçi davet detayları"""
+    id: int
+    supplier_id: int
+    company_id: int
+    status: str
+    relationship_type: str
+    invited_at: datetime
+    accepted_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+class Scope3EmissionCreate(StrictBaseModel):
+    """Scope 3 emisyon oluşturma"""
+    product_footprint_id: int
+    quantity_purchased: float
+    purchase_date: date
+
+class Scope3Emission(Scope3EmissionCreate):
+    """Scope 3 emisyon detayları"""
+    id: int
+    facility_id: int
+    calculated_co2e_kg: float
+    created_at: date
+    
+    class Config:
+        from_attributes = True
+
+class SupplierList(BaseModel):
+    """Tedarikçi listesi"""
+    suppliers: List[Supplier]
+    total: int
+    active_count: int
+    verified_count: int
+
+class ProductFootprintList(BaseModel):
+    """Ürün footprint listesi"""
+    products: List[ProductFootprint]
+    total: int
+    verified_count: int
+
+
+# ===== GRANULAR ACCESS CONTROL - MEMBER SCHEMAS =====
+
+class MemberCreate(StrictBaseModel):
+    """Yeni üye ekleme"""
+    user_id: int
+    role: CompanyMemberRole = CompanyMemberRole.data_entry
+    facility_id: Optional[int] = None  # NULL = tüm tesisler
+
+
+class MemberUpdate(StrictBaseModel):
+    """Üye güncelleme"""
+    role: Optional[CompanyMemberRole] = None
+    facility_id: Optional[int] = None
+
+
+class Member(BaseModel):
+    """Üye detayları"""
+    id: int
+    user_id: int
+    company_id: int
+    role: CompanyMemberRole
+    facility_id: Optional[int] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class MemberDetail(Member):
+    """Üye detayları + ilişkili veriler"""
+    user_email: Optional[str] = None
+    facility_name: Optional[str] = None
+
+
+class MemberList(BaseModel):
+    """Üye listesi"""
+    members: List[MemberDetail]
+    total: int
+    by_role: dict = {}  # {"owner": 1, "admin": 2, ...}
+
+
+# ===== GAMIFICATION - BADGE SCHEMAS =====
+
+class Badge(BaseModel):
+    """Rozet detayları"""
+    id: int
+    badge_name: str
+    description: Optional[str] = None
+    icon_emoji: Optional[str] = None
+    unlock_condition: Optional[str] = None
+    category: Optional[str] = None
+    is_active: bool = True
+    
+    class Config:
+        from_attributes = True
+
+
+class UserBadgeDetail(BaseModel):
+    """Kullanıcının kazandığı rozet"""
+    id: int
+    badge_id: int
+    earned_at: str
+    badge: Badge
+    
+    class Config:
+        from_attributes = True
+
+
+class UserBadgeList(BaseModel):
+    """Kullanıcının tüm rozetleri"""
+    badges: List[UserBadgeDetail]
+    total: int
+    earned_count: int
+
+
+class LeaderboardEntry(BaseModel):
+    """Sıralama girdisi"""
+    company_id: int
+    company_name: Optional[str] = None
+    rank: int
+    efficiency_score: float
+    emissions_per_employee_kwh: Optional[float] = None
+    region: Optional[str] = None
+
+
+class Leaderboard(BaseModel):
+    """Sektör sıralaması"""
+    industry_type: str
+    region: Optional[str] = None
+    entries: List[LeaderboardEntry]
+    total: int
+    your_rank: Optional[int] = None
+    your_score: Optional[float] = None

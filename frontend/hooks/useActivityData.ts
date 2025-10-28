@@ -9,10 +9,10 @@ export function useActivityData(facilityId) {
   return useQuery({
     queryKey: ['facility', facilityId, 'activity-data'],
     queryFn: () => {
-      const facilitiesData = queryClient.getQueryData(['user', 'companies']);
-      if (facilitiesData) {
+      const facilitiesData = queryClient.getQueryData(['user', 'companies']) as any[];
+      if (facilitiesData && Array.isArray(facilitiesData)) {
         for (const company of facilitiesData) {
-          const facility = company.facilities?.find(f => f.id === facilityId);
+          const facility = company.facilities?.find((f: any) => f.id === facilityId);
           if (facility) {
             return facility.activity_data || [];
           }
@@ -28,15 +28,15 @@ export function useActivityData(facilityId) {
 export function useDeleteActivityData() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (activityId) => api.delete(`/activity-data/${activityId}`),
+    mutationFn: (activityId: any) => api.delete(`/activity-data/${activityId}`),
 
-    onMutate: async (activityIdToDelete) => {
+    onMutate: async (activityIdToDelete: any) => {
       await queryClient.cancelQueries({ queryKey: ['user', 'companies'] });
 
-      const previousCompaniesData = queryClient.getQueryData(['user', 'companies']);
+      const previousCompaniesData = queryClient.getQueryData(['user', 'companies']) as any;
 
       // OPTIMISTIC: Aktiviteyi anında kaldır
-      queryClient.setQueryData(['user', 'companies'], (oldData) => {
+      queryClient.setQueryData(['user', 'companies'], (oldData: any) => {
         if (!oldData) return oldData;
 
         return oldData.map(company => ({
@@ -72,12 +72,12 @@ export function useDeleteActivityData() {
 export function useCreateActivityData() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ facilityId, data }) => api.post(`/facilities/${facilityId}/activity-data/`, data),
+    mutationFn: ({ facilityId, data }: { facilityId: number; data: any }) => api.post(`/facilities/${facilityId}/activity-data/`, data),
 
-    onMutate: async (variables) => {
+    onMutate: async (variables: any) => {
       await queryClient.cancelQueries({ queryKey: ['user', 'companies'] });
 
-      const previousCompaniesData = queryClient.getQueryData(['user', 'companies']);
+      const previousCompaniesData = queryClient.getQueryData(['user', 'companies']) as any;
 
       // Optimistic: Aktiviteyi ekle
       const optimisticActivity = {
@@ -86,7 +86,7 @@ export function useCreateActivityData() {
         created_at: new Date().toISOString(),
       };
 
-      queryClient.setQueryData(['user', 'companies'], (oldData) => {
+      queryClient.setQueryData(['user', 'companies'], (oldData: any) => {
         if (!oldData) return oldData;
 
         return oldData.map(company => ({
@@ -107,10 +107,10 @@ export function useCreateActivityData() {
     },
 
     // SEAMLESS: Geçici veriyi sunucudan gelen gerçek veri ile değiştir
-    onSuccess: (realData, variables, context) => {
+    onSuccess: (realData: any, variables: any, context: any) => {
       toast.success('Aktivite verisi başarıyla kaydedildi!');
 
-      queryClient.setQueryData(['user', 'companies'], (oldData) => {
+      queryClient.setQueryData(['user', 'companies'], (oldData: any) => {
         if (!oldData) return oldData;
 
         return oldData.map(company => ({
@@ -130,7 +130,7 @@ export function useCreateActivityData() {
       });
     },
 
-    onError: (err, variables, context) => {
+    onError: (err: any, variables: any, context: any) => {
       toast.error('Aktivite verisi kaydedilemedi. Değişiklikler geri alınıyor.');
       if (context?.previousCompaniesData) {
         queryClient.setQueryData(['user', 'companies'], context.previousCompaniesData);
@@ -149,7 +149,7 @@ export function useCreateActivityData() {
 export function useUploadCSV() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ facilityId, file }) => {
+    mutationFn: ({ facilityId, file }: { facilityId: number; file: File }) => {
       const formData = new FormData();
       formData.append('file', file);
       return api.post(`/facilities/${facilityId}/upload-csv`, formData, {
@@ -157,7 +157,7 @@ export function useUploadCSV() {
       });
     },
 
-    onSuccess: (response, variables) => {
+    onSuccess: (response: any, variables: any) => {
       const result = response.data;
 
       if (result.successful_rows > 0) {
@@ -170,7 +170,7 @@ export function useUploadCSV() {
       }
     },
 
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(error.response?.data?.detail || 'CSV yükleme başarısız.');
     },
   });

@@ -46,6 +46,12 @@ function DialogOverlay({
   );
 }
 
+/**
+ * @param {Object} props
+ * @param {string} [props.className]
+ * @param {React.ReactNode} [props.children]
+ * @param {boolean} [props.showCloseButton=true]
+ */
 function DialogContent({
   className,
   children,
@@ -76,6 +82,11 @@ function DialogContent({
   );
 }
 
+/**
+ * @param {Object} props
+ * @param {string} [props.className]
+ * @param {React.ReactNode} [props.children]
+ */
 function DialogHeader({
   className,
   ...props
@@ -83,11 +94,16 @@ function DialogHeader({
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2 text-center sm:text-left", className)}
+      className={cn("flex flex-col gap-2 text-center sm:text-left", className || "")}
       {...props} />
   );
 }
 
+/**
+ * @param {Object} props
+ * @param {string} [props.className]
+ * @param {React.ReactNode} [props.children]
+ */
 function DialogFooter({
   className,
   ...props
@@ -95,11 +111,16 @@ function DialogFooter({
   return (
     <div
       data-slot="dialog-footer"
-      className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
+      className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className || "")}
       {...props} />
   );
 }
 
+/**
+ * @param {Object} props
+ * @param {string} [props.className]
+ * @param {React.ReactNode} [props.children]
+ */
 function DialogTitle({
   className,
   ...props
@@ -107,11 +128,16 @@ function DialogTitle({
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn("text-lg leading-none font-semibold", className)}
+      className={cn("text-lg leading-none font-semibold", className || "")}
       {...props} />
   );
 }
 
+/**
+ * @param {Object} props
+ * @param {string} [props.className]
+ * @param {React.ReactNode} [props.children]
+ */
 function DialogDescription({
   className,
   ...props
@@ -119,7 +145,7 @@ function DialogDescription({
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
-      className={cn("text-muted-foreground text-sm", className)}
+      className={cn("text-muted-foreground text-sm", className || "")}
       {...props} />
   );
 }

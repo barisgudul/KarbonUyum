@@ -12,7 +12,9 @@ import ActivityDataForm from '../../components/ActivityDataForm';
 import CSVUploader from '../../components/CSVUploader';
 import SummaryPanel from '../../components/SummaryPanel';
 import CompanyList from '../../components/dashboard/CompanyList';
-import { LogOut, Plus, Leaf, Building2, Factory, Upload, Settings, TrendingUp, ChevronDown } from 'lucide-react';
+import SupplierManager from '../../components/SupplierManager';
+import TeamManagementModal from '../../components/TeamManagementModal';
+import { LogOut, Plus, Leaf, Building2, Factory, Upload, Settings, TrendingUp, ChevronDown, Users } from 'lucide-react';
 import { useCompanies } from '../../hooks/useCompanies';
 
 export default function DashboardPage() {
@@ -131,7 +133,7 @@ export default function DashboardPage() {
             <div className="w-24 h-1.5 bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 rounded-full shadow-lg"></div>
           </div>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
             {/* Card 1 - New Company */}
             <button
               onClick={() => openDialog('newCompany')}
@@ -211,6 +213,44 @@ export default function DashboardPage() {
                   <h4 className="text-2xl font-black text-white leading-tight">Ayarlar</h4>
                 </div>
                 <p className="text-emerald-100/80 text-sm font-bold">Profil ve tercihler</p>
+              </div>
+              <div className="absolute inset-0 border-2 border-white/30 rounded-2xl group-hover:border-white/50 transition-all pointer-events-none"></div>
+            </button>
+
+            {/* Card 5 - Supplier Management */}
+            <button
+              onClick={() => openDialog('suppliers')}
+              className="group relative overflow-hidden rounded-2xl transition-all duration-500"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-600 to-pink-700 group-hover:from-purple-500 group-hover:to-pink-600 transition-all duration-500"></div>
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-purple-400 to-pink-500 blur-xl"></div>
+              <div className="relative px-8 py-10 text-left flex flex-col justify-between h-full min-h-[220px]">
+                <div>
+                  <div className="p-3.5 bg-white/20 rounded-2xl w-fit mb-5 group-hover:bg-white/30 transition-all backdrop-blur">
+                    <Users className="w-7 h-7 text-white" strokeWidth={1.5} />
+                  </div>
+                  <h4 className="text-2xl font-black text-white leading-tight">Tedarikçiler</h4>
+                </div>
+                <p className="text-emerald-100/80 text-sm font-bold">Ağ ve Kapsam 3</p>
+              </div>
+              <div className="absolute inset-0 border-2 border-white/30 rounded-2xl group-hover:border-white/50 transition-all pointer-events-none"></div>
+            </button>
+
+            {/* Card 6 - Team Management */}
+            <button
+              onClick={() => openDialog('teamManagement')}
+              className="group relative overflow-hidden rounded-2xl transition-all duration-500"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-600 to-indigo-700 group-hover:from-blue-500 group-hover:to-indigo-600 transition-all duration-500"></div>
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-blue-400 to-indigo-500 blur-xl"></div>
+              <div className="relative px-8 py-10 text-left flex flex-col justify-between h-full min-h-[220px]">
+                <div>
+                  <div className="p-3.5 bg-white/20 rounded-2xl w-fit mb-5 group-hover:bg-white/30 transition-all backdrop-blur">
+                    <Users className="w-7 h-7 text-white" strokeWidth={1.5} />
+                  </div>
+                  <h4 className="text-2xl font-black text-white leading-tight">Takım</h4>
+                </div>
+                <p className="text-emerald-100/80 text-sm font-bold">Üyeler ve yetki</p>
               </div>
               <div className="absolute inset-0 border-2 border-white/30 rounded-2xl group-hover:border-white/50 transition-all pointer-events-none"></div>
             </button>
@@ -591,6 +631,81 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Supplier Management Dialog */}
+      <Dialog open={activeDialog?.name === 'suppliers'} onOpenChange={closeDialog}>
+        <DialogContent className="sm:max-w-[800px] bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-emerald-500/40 shadow-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-3xl font-black bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">Tedarikçi Yönetimi</DialogTitle>
+            <DialogDescription>Tüm tedarikçilerinizi merkezi olarak yönetin ve kapsamınızı genişletin.</DialogDescription>
+          </DialogHeader>
+          {activeDialog?.data?.companyId ? (
+            <div className="bg-slate-700/30 rounded-xl p-1">
+              <SupplierManager companyId={activeDialog.data.companyId} />
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[400px] overflow-y-auto">
+              {companies && companies.length > 0 ? (
+                companies.map((company) => (
+                  <button
+                    key={company.id}
+                    onClick={() => {
+                      openDialog('suppliers', { companyId: company.id });
+                    }}
+                    className="w-full p-4 bg-slate-700/40 hover:bg-slate-700/60 border border-emerald-500/30 hover:border-emerald-500/60 rounded-xl transition-all text-left group"
+                  >
+                    <p className="font-bold text-emerald-300 group-hover:text-emerald-200">{company.name}</p>
+                    <p className="text-xs text-emerald-400/60 mt-1">{company.facilities?.length || 0} tesis</p>
+                  </button>
+                ))
+              ) : (
+                <p className="text-center text-emerald-300/70 py-8">Şirket bulunamadı</p>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Team Management Dialog */}
+      <Dialog open={activeDialog?.name === 'teamManagement'} onOpenChange={closeDialog}>
+        <DialogContent className="sm:max-w-[800px] bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-emerald-500/40 shadow-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-3xl font-black bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">Takım Yönetimi</DialogTitle>
+            <DialogDescription>Şirket üyelerini ve yetkilendirmelerini yönetin.</DialogDescription>
+          </DialogHeader>
+          {activeDialog?.data?.companyId ? (
+            <div className="bg-slate-700/30 rounded-xl p-1">
+              <TeamManagementModal 
+                companyId={activeDialog.data.companyId}
+                facilities={activeDialog.data.facilities || []}
+                onClose={closeDialog}
+              />
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[400px] overflow-y-auto">
+              {companies && companies.length > 0 ? (
+                companies.map((company) => (
+                  <button
+                    key={company.id}
+                    onClick={() => {
+                      openDialog('teamManagement', { 
+                        companyId: company.id,
+                        facilities: company.facilities || []
+                      });
+                    }}
+                    className="w-full p-4 bg-slate-700/40 hover:bg-slate-700/60 border border-emerald-500/30 hover:border-emerald-500/60 rounded-xl transition-all text-left group"
+                  >
+                    <p className="font-bold text-emerald-300 group-hover:text-emerald-200">{company.name}</p>
+                    <p className="text-xs text-emerald-400/60 mt-1">{company.facilities?.length || 0} tesis</p>
+                  </button>
+                ))
+              ) : (
+                <p className="text-center text-emerald-300/70 py-8">Şirket bulunamadı</p>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
