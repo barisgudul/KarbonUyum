@@ -334,6 +334,11 @@ class SupplierInvitationStatus(str, enum.Enum):
     rejected = "rejected"  # Tedarikçi reddetme
     expired = "expired"  # 30 gün sonra süresi doldı
 
+class VerificationLevel(str, enum.Enum):
+    self_declared = "self_declared"  # Tedarikçi beyanı (düşük güven)
+    document_backed = "document_backed"  # Belge destekli (EPD, fatura vb.) (orta güven)
+    audited = "audited"  # Denetim onaylı (yüksek güven - premium özellik)
+
 class Supplier(Base):
     __tablename__ = "suppliers"
     
@@ -403,9 +408,13 @@ class ProductFootprint(Base):
     # Footprint verisi (Scope 1, 2, 3)
     co2e_per_unit_kg = Column(Float, nullable=False)  # 1 birim başına kg CO2e
     
-    # Doğrulama
-    is_verified = Column(Boolean, default=False)  # Admin/Customer doğrulaması
-    verification_notes = Column(String, nullable=True)
+    # Doğrulama (Gelişmiş)
+    is_verified = Column(Boolean, default=False)  # Admin/Customer doğrulaması (geriye uyumluluk)
+    verification_level = Column(Enum(VerificationLevel), default=VerificationLevel.self_declared, nullable=False)  # Doğrulama seviyesi
+    verification_notes = Column(String, nullable=True)  # Doğrulama notları
+    verification_document_url = Column(String, nullable=True)  # EPD belgesi, sertifika vb. URL
+    verified_at = Column(DateTime, nullable=True)  # Doğrulama tarihi
+    verified_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Doğrulayan kullanıcı
     
     # Data kaynağı
     data_source = Column(String, nullable=True)  # "EPD", "Manual", "Scientific" vs

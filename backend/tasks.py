@@ -752,3 +752,89 @@ def cleanup_expired_reports(self):
         logger.error(f"❌ Temizlik görev hatası: {exc}")
     finally:
         db.close()
+
+
+@app.task(name='tasks.calculate_supplier_benchmarks', bind=True, max_retries=3)
+def calculate_supplier_benchmarks(self):
+    """
+    Tedarikçi ürünleri için sektörel benchmark'ları hesapla
+    
+    Her product_category için:
+    - Ortalama co2e_per_unit_kg
+    - Medyan değer
+    - En iyi %25'lik dilim (best_in_class)
+    - Toplam ürün sayısı
+    
+    Bu veriler tedarikçilere kendi performanslarını 
+    sektör ortalamasıyla karşılaştırma imkanı sağlar.
+    """
+    db = SessionLocal()
+    try:
+        logger.info("🔄 Tedarikçi benchmark hesaplama başladı...")
+        
+        # Tüm unique product_category'leri al
+        categories = db.query(models.ProductFootprint.product_category).distinct().all()
+        
+        benchmark_results = {}
+        
+        for (category,) in categories:
+            if not category:
+                continue
+            
+            # Bu kategorideki tüm ürünleri al
+            products = db.query(models.ProductFootprint).filter(
+                models.ProductFootprint.product_category == category,
+                models.ProductFootprint.co2e_per_unit_kg > 0  # Sadece geçerli değerler
+            ).all()
+            
+            if not products:
+                continue
+            
+            # CO2e değerlerini topla
+            co2e_values = [p.co2e_per_unit_kg for p in products]
+            
+            if not co2e_values:
+                continue
+            
+            # İstatistikleri hesapla
+            avg_co2e = sum(co2e_values) / len(co2e_values)
+            
+            # Medyan hesaplama
+            sorted_values = sorted(co2e_values)
+            mid = len(sorted_values) // 2
+            median_co2e = (sorted_values[mid] + sorted_values[~mid]) / 2 if len(sorted_values) > 0 else 0
+            
+            # En iyi %25'lik dilim (best_in_class) - en düşük emisyonlar
+            percentile_25_index = int(len(sorted_values) * 0.25)
+            best_in_class = sorted_values[percentile_25_index] if percentile_25_index < len(sorted_values) else sorted_values[0]
+            
+            benchmark_results[category] = {
+                "category": category,
+                "avg_co2e_per_unit": round(avg_co2e, 3),
+                "median_co2e_per_unit": round(median_co2e, 3),
+                "best_in_class": round(best_in_class, 3),
+                "product_count": len(products),
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            
+            logger.info(
+                f"📊 {category}: Ort={avg_co2e:.2f}, Medyan={median_co2e:.2f}, "
+                f"Best={best_in_class:.2f} kg CO2e ({len(products)} ürün)"
+            )
+        
+        # Sonuçları cache'e kaydet (Redis veya DB'ye kaydedilebilir)
+        # Şu an için sadece log'layalım, gelecekte Redis'e kaydedilecek
+        
+        logger.info(f"✅ {len(benchmark_results)} kategori için benchmark hesaplandı")
+        
+        return {
+            "success": True,
+            "categories_processed": len(benchmark_results),
+            "benchmarks": benchmark_results
+        }
+        
+    except Exception as exc:
+        logger.error(f"❌ Benchmark hesaplama hatası: {exc}")
+        raise self.retry(exc=exc, countdown=60)  # 1 dakika sonra tekrar dene
+    finally:
+        db.close()

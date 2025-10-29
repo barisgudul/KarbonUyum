@@ -1,81 +1,23 @@
 // frontend/app/suppliers/accept/[token]/page.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { CheckCircle, AlertCircle, Loader, Package, Building2 } from 'lucide-react';
-import toast from 'react-hot-toast';
-
-interface InvitationData {
-  supplier_id: number;
-  supplier_name: string;
-  company_name: string;
-  invited_at: string;
-  expires_at: string;
-  status: string;
-}
+import { useInvitationDetails } from '@/hooks/useSuppliers';
 
 export default function SupplierAcceptPage() {
   const params = useParams();
   const router = useRouter();
   const token = params.token as string;
 
-  const [invitation, setInvitation] = useState<InvitationData | null>(null);
-  const [isAccepting, setIsAccepting] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isAccepted, setIsAccepted] = useState(false);
+  // React Query hook kullan
+  const { data: invitation, isLoading, error } = useInvitationDetails(token);
 
-  useEffect(() => {
-    const loadInvitation = async () => {
-      try {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/suppliers/invitation/${token}`
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          setInvitation(data);
-        } else if (response.status === 404) {
-          setError('Davet bulunamadı veya zaman aşımına uğramış olabilir');
-        } else {
-          setError('Davet yüklenemedi');
-        }
-      } catch (err) {
-        setError('Bağlantı hatası');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (token) {
-      loadInvitation();
-    }
-  }, [token]);
-
-  const handleAcceptInvitation = async () => {
-    setIsAccepting(true);
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/suppliers/accept/${token}`,
-        { method: 'POST' }
-      );
-
-      if (response.ok) {
-        setIsAccepted(true);
-        toast.success('Davet kabul edildi! Platform üzerinde ürün ekleyebilirsiniz.');
-        setTimeout(() => {
-          router.push('/suppliers/dashboard');
-        }, 2000);
-      } else {
-        throw new Error('Kabul işlemi başarısız');
-      }
-    } catch (err) {
-      toast.error('Davet kabul edilemedi');
-    } finally {
-      setIsAccepting(false);
-    }
+  const handleAcceptInvitation = () => {
+    // Yeni akış: Kullanıcıyı register sayfasına yönlendir
+    router.push(`/suppliers/register?token=${token}`);
   };
 
   if (isLoading) {
@@ -102,7 +44,11 @@ export default function SupplierAcceptPage() {
           className="max-w-md w-full p-8 bg-gradient-to-br from-red-500/10 to-slate-900 rounded-2xl border-2 border-red-500/30 text-center space-y-4"
         >
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto" />
-          <h2 className="text-2xl font-bold text-red-300">{error}</h2>
+          <h2 className="text-2xl font-bold text-red-300">
+            {error?.response?.status === 404 
+              ? 'Davet bulunamadı' 
+              : 'Davet yüklenemedi'}
+          </h2>
           <p className="text-red-300/70 text-sm">
             Lütfen davet bağlantısını kontrol ediniz veya yeniden davet isteyin.
           </p>
@@ -112,34 +58,6 @@ export default function SupplierAcceptPage() {
           >
             Ana Sayfaya Dön
           </button>
-        </motion.div>
-      </div>
-    );
-  }
-
-  if (isAccepted) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center space-y-6"
-        >
-          <motion.div
-            animate={{ scale: [1, 1.2, 1] }}
-            transition={{ duration: 1, repeat: Infinity }}
-          >
-            <CheckCircle className="w-24 h-24 text-emerald-400 mx-auto" />
-          </motion.div>
-          <div>
-            <h2 className="text-3xl font-bold text-emerald-300 mb-2">Başarılı!</h2>
-            <p className="text-emerald-300/70">
-              {invitation?.company_name}'den gelen daveti kabul ettiniz.
-            </p>
-            <p className="text-emerald-300/70 text-sm mt-2">
-              Panele yönlendiriliyorsunuz...
-            </p>
-          </div>
         </motion.div>
       </div>
     );
@@ -214,27 +132,16 @@ export default function SupplierAcceptPage() {
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={handleAcceptInvitation}
-          disabled={isAccepting}
-          className="w-full px-6 py-3 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white font-bold rounded-lg shadow-lg hover:shadow-emerald-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full px-6 py-3 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white font-bold rounded-lg shadow-lg hover:shadow-emerald-500/50 transition-all flex items-center justify-center gap-2"
         >
-          {isAccepting ? (
-            <>
-              <Loader className="w-5 h-5 animate-spin" />
-              Kabul Ediliyor...
-            </>
-          ) : (
-            <>
-              <CheckCircle className="w-5 h-5" />
-              Daveti Kabul Et
-            </>
-          )}
+          <CheckCircle className="w-5 h-5" />
+          Daveti Kabul Et ve Hesap Oluştur
         </motion.button>
 
         {/* İptal */}
         <button
           onClick={() => router.push('/')}
-          disabled={isAccepting}
-          className="w-full px-6 py-2 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10 font-bold rounded-lg transition-all disabled:opacity-50"
+          className="w-full px-6 py-2 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10 font-bold rounded-lg transition-all"
         >
           Daha Sonra
         </button>

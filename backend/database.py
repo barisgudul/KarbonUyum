@@ -18,15 +18,15 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./karbonuyum.db")
 DATABASE_SSL_MODE = os.getenv("DATABASE_SSL_MODE", "prefer")  # prefer|require|disable|allow
 
 # Connection pool configuration
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
-    poolclass=QueuePool,
-    pool_size=10,
-    max_overflow=20,
+    poolclass=QueuePool if SQLALCHEMY_DATABASE_URL.startswith("postgresql") else None,
+    pool_size=10 if SQLALCHEMY_DATABASE_URL.startswith("postgresql") else 0,
+    max_overflow=20 if SQLALCHEMY_DATABASE_URL.startswith("postgresql") else 0,
     pool_recycle=3600,  # Recycle connections after 1 hour
     pool_pre_ping=True,  # Verify connections before reusing
     echo_pool=False,
@@ -35,7 +35,9 @@ engine = create_engine(
         "sslmode": DATABASE_SSL_MODE,
         # For production with self-signed certs: set sslrootcert
         # "sslrootcert": os.getenv("DB_SSL_CERT_PATH"),
-    } if SQLALCHEMY_DATABASE_URL and SQLALCHEMY_DATABASE_URL.startswith("postgresql") else {}
+    } if SQLALCHEMY_DATABASE_URL and SQLALCHEMY_DATABASE_URL.startswith("postgresql") else {},
+    # SQLite specific settings
+    **{"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {}
 )
 
 # Log SSL configuration

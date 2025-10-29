@@ -1,7 +1,7 @@
 # backend/main.py
 import logging
 import os
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import List, Union, Dict, Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Depends, FastAPI, HTTPException, status, Response, UploadFile, File, Request
@@ -372,14 +372,11 @@ def onboard_user(
         dashboard_ready=True
     )
 
-@app.post("/wizard/submit", response_model=schemas.WizardSubmitResponse)
-@limiter.limit("10/minute")  # Wizard spam koruması
+@app.post("/wizard/submit")
 def submit_wizard_data(
-    request: Request,
     wizard_data: schemas.WizardSubmitRequest,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
-    calc_service: ICalculationService = Depends(get_calculation_service)
+    current_user: models.User = Depends(auth.get_current_user)
 ):
     """
     Faturadan Rapora Sihirbazı - Tek seferde tüm veri girişi.
@@ -443,7 +440,7 @@ def submit_wizard_data(
         
         # Emisyon hesapla
         try:
-            co2e_kg = calc_service.calculate_emissions(
+            co2e_kg = get_calculation_service(db).calculate_emissions(
                 activity_type=item.activity_type,
                 quantity=item.quantity,
                 unit=unit
@@ -926,8 +923,7 @@ def generate_cbam_report(
     company_id: int,
     report_request: schemas.CBAMReportRequest,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
-    calc_service: ICalculationService = Depends(get_calculation_service)
+    current_user: models.User = Depends(auth.get_current_user)
 ):
     """
     AB CBAM düzenlemelerine uygun XML rapor üretir.
@@ -941,7 +937,7 @@ def generate_cbam_report(
     
     # CBAM servisi
     from services.cbam_service import CBAMReportService
-    cbam_service = CBAMReportService(db, calc_service)
+    cbam_service = CBAMReportService(db, get_calculation_service(db))
     
     # XML rapor üret
     try:
@@ -1122,7 +1118,6 @@ def delete_notification(
 # YENİ: Fatura Yükleme ve OCR Endpoints (Modül 2.2)
 
 @app.post("/facilities/{facility_id}/invoices/upload", response_model=schemas.Invoice)
-@limiter.limit("20/minute")
 def upload_invoice(
     facility_id: int,
     file: UploadFile = File(...),
@@ -1322,7 +1317,6 @@ def get_unit_for_activity_type(activity_type: str) -> str:
 # YENİ: Parametrik ROI Simülatörü (Modül 2.3 - Interactive)
 
 @app.get("/companies/{company_id}/roi-simulator")
-@limiter.limit("30/minute")
 def get_roi_simulator(
     company_id: int,
     solar_kwp: float = 100,
@@ -1515,7 +1509,6 @@ def _generate_payback_chart(simulations: Dict) -> Dict:
 # YENİ: Asenkron Rapor Endpoints (Modül 2.1)
 
 @app.post("/companies/{company_id}/reports/request", response_model=schemas.ReportGenerationResponse)
-@limiter.limit("10/minute")
 def request_report_generation(
     company_id: int,
     report_request: schemas.ReportCreate,
@@ -1609,7 +1602,6 @@ def request_report_generation(
 
 
 @app.get("/companies/{company_id}/reports", response_model=schemas.ReportList)
-@limiter.limit("20/minute")
 def list_company_reports(
     company_id: int,
     status: Optional[str] = None,
@@ -1673,7 +1665,6 @@ def list_company_reports(
 
 
 @app.get("/reports/{report_id}/status")
-@limiter.limit("30/minute")
 def get_report_status(
     report_id: int,
     db: Session = Depends(get_db),
@@ -1704,7 +1695,6 @@ def get_report_status(
 
 
 @app.get("/reports/{report_id}/download")
-@limiter.limit("20/minute")
 def download_report(
     report_id: int,
     db: Session = Depends(get_db),
@@ -1758,7 +1748,6 @@ def download_report(
 
 
 @app.delete("/reports/{report_id}")
-@limiter.limit("10/minute")
 def delete_report(
     report_id: int,
     db: Session = Depends(get_db),
@@ -1798,7 +1787,6 @@ def delete_report(
 import secrets
 
 @app.post("/suppliers/invite", response_model=schemas.SupplierInviteResponse)
-@limiter.limit("20/minute")
 def invite_supplier(
     company_id: int,
     invite_request: schemas.SupplierInviteRequest,
@@ -1951,7 +1939,6 @@ def accept_supplier_invitation(
 
 
 @app.post("/suppliers/{supplier_id}/products", response_model=schemas.ProductFootprint)
-@limiter.limit("30/minute")
 def add_supplier_product(
     supplier_id: int,
     product: schemas.ProductFootprintCreate,
@@ -2000,7 +1987,6 @@ def add_supplier_product(
 
 
 @app.get("/companies/{company_id}/suppliers", response_model=schemas.SupplierList)
-@limiter.limit("20/minute")
 def list_company_suppliers(
     company_id: int,
     status: Optional[str] = None,
@@ -2045,7 +2031,6 @@ def list_company_suppliers(
 
 
 @app.get("/suppliers/{supplier_id}/products", response_model=schemas.ProductFootprintList)
-@limiter.limit("20/minute")
 def list_supplier_products(
     supplier_id: int,
     verified_only: bool = False,
@@ -2073,7 +2058,6 @@ def list_supplier_products(
 
 
 @app.post("/facilities/{facility_id}/scope3-emissions", response_model=schemas.Scope3Emission)
-@limiter.limit("30/minute")
 def record_scope3_emission(
     facility_id: int,
     emission: schemas.Scope3EmissionCreate,
@@ -2137,7 +2121,6 @@ def record_scope3_emission(
 
 
 @app.get("/facilities/{facility_id}/scope3-emissions")
-@limiter.limit("20/minute")
 def list_facility_scope3_emissions(
     facility_id: int,
     db: Session = Depends(get_db),
@@ -2170,7 +2153,6 @@ def list_facility_scope3_emissions(
 # ===== SUPPLIER PRODUCT MANAGEMENT ENDPOINTS =====
 
 @app.get("/suppliers/my-products")
-@limiter.limit("20/minute")
 def get_supplier_products(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
@@ -2199,7 +2181,6 @@ def get_supplier_products(
 
 
 @app.post("/suppliers/my-products", response_model=schemas.ProductFootprint)
-@limiter.limit("20/minute")
 def create_supplier_product(
     product_data: schemas.ProductFootprintCreate,
     db: Session = Depends(get_db),
@@ -2242,7 +2223,6 @@ def create_supplier_product(
 
 
 @app.delete("/suppliers/products/{product_id}")
-@limiter.limit("20/minute")
 def delete_supplier_product(
     product_id: int,
     db: Session = Depends(get_db),
@@ -2277,7 +2257,6 @@ def delete_supplier_product(
 
 
 @app.get("/suppliers/invitation/{token}")
-@limiter.limit("5/minute")
 def get_invitation_details(
     token: str,
     db: Session = Depends(get_db)
@@ -2313,7 +2292,6 @@ def get_invitation_details(
 # ===== GRANULAR ACCESS CONTROL - MEMBER MANAGEMENT ENDPOINTS =====
 
 @app.get("/companies/{company_id}/members")
-@limiter.limit("20/minute")
 def list_company_members(
     company_id: int,
     db: Session = Depends(get_db),
@@ -2370,7 +2348,6 @@ def list_company_members(
 
 
 @app.post("/companies/{company_id}/members", response_model=schemas.Member)
-@limiter.limit("20/minute")
 def add_company_member(
     company_id: int,
     member_data: schemas.MemberCreate,
@@ -2443,7 +2420,6 @@ def add_company_member(
 
 
 @app.put("/companies/{company_id}/members/{member_id}", response_model=schemas.Member)
-@limiter.limit("20/minute")
 def update_company_member(
     company_id: int,
     member_id: int,
@@ -2496,7 +2472,6 @@ def update_company_member(
 
 
 @app.delete("/companies/{company_id}/members/{member_id}")
-@limiter.limit("20/minute")
 def remove_company_member(
     company_id: int,
     member_id: int,
@@ -2537,7 +2512,6 @@ def remove_company_member(
 # ===== GAMIFICATION - BADGE & LEADERBOARD ENDPOINTS =====
 
 @app.get("/users/me/badges", response_model=schemas.UserBadgeList)
-@limiter.limit("30/minute")
 def get_user_badges(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
@@ -2567,7 +2541,6 @@ def get_user_badges(
 
 
 @app.get("/leaderboard")
-@limiter.limit("20/minute")
 def get_leaderboard(
     industry_type: Optional[str] = None,
     region: Optional[str] = None,
@@ -2640,7 +2613,6 @@ def get_leaderboard(
 
 
 @app.post("/admin/badges", response_model=schemas.Badge)
-@limiter.limit("10/minute")
 def create_badge(
     badge_data: dict,
     db: Session = Depends(get_db),

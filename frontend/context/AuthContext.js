@@ -47,6 +47,23 @@ export const AuthProvider = ({ children }) => {
     await fetchUser();
   };
 
+  const register = async (email, password) => {
+    const { data } = await api.post('/users/', {
+      email,
+      password
+    });
+    // Login sonrası JWT token al
+    const params = new URLSearchParams();
+    params.append('username', email);
+    params.append('password', password);
+    const loginResponse = await api.post('/token', params, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+    localStorage.setItem('token', loginResponse.data.access_token);
+    api.defaults.headers.Authorization = `Bearer ${loginResponse.data.access_token}`;
+    await fetchUser();
+  };
+
   const logout = () => {
     localStorage.removeItem('token');
     delete api.defaults.headers.Authorization;
@@ -56,7 +73,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     // YENİ: value objesine fetchUser'ı ekledik
-    <AuthContext.Provider value={{ user, login, logout, loading, fetchUser }}>
+    <AuthContext.Provider value={{ user, login, logout, register, loading, fetchUser }}>
       {!loading && children}
     </AuthContext.Provider>
   );

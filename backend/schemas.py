@@ -1,6 +1,6 @@
 # backend/schemas.py 
 
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional
 import enum
 
@@ -741,6 +741,11 @@ class SupplierInviteRequest(StrictBaseModel):
     supplier_email: str
     supplier_company_name: str
     relationship_type: str = "supplier"
+
+class SupplierOnboardRequest(StrictBaseModel):
+    """Tedarikçi onboarding isteği (şifre belirleme)"""
+    token: str
+    password: str
 
 class SupplierInviteResponse(BaseModel):
     """Tedarikçi davet yanıtı"""

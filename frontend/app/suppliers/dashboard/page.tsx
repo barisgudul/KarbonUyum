@@ -1,10 +1,11 @@
 // frontend/app/suppliers/dashboard/page.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Package, Plus, Loader, AlertCircle, CheckCircle, Trash2 } from 'lucide-react';
+import { Package, Plus, Loader, CheckCircle, Trash2, TrendingUp, TrendingDown, Award } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useSupplierDashboard, useAddProduct, useDeleteProduct } from '@/hooks/useSuppliers';
 
 interface Product {
   id: number;
@@ -16,9 +17,14 @@ interface Product {
 }
 
 export default function SupplierDashboardPage() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAdding, setIsAdding] = useState(false);
+  // React Query hooks - Dashboard verisi benchmark ile birlikte gelir
+  const { data: dashboardData, isLoading } = useSupplierDashboard();
+  const addProductMutation = useAddProduct();
+  const deleteProductMutation = useDeleteProduct();
+  
+  const products = dashboardData?.products || [];
+  const summary = dashboardData?.summary || {};
+
   const [showForm, setShowForm] = useState(false);
   
   const [formData, setFormData] = useState({
@@ -40,54 +46,14 @@ export default function SupplierDashboardPage() {
 
   const units = ['kg', 'ton', 'litre', 'm³', 'kWh', 'adet'];
 
-  // Ürünleri yükle
-  const loadProducts = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/suppliers/my-products`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setProducts(data.products);
-      }
-    } catch (err) {
-      console.error('Product load error:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadProducts();
-  }, []);
-
-  const handleAddProduct = async () => {
+  const handleAddProduct = () => {
     if (!formData.product_name || !formData.product_category || !formData.co2e_per_unit_kg) {
       toast.error('Tüm alanları doldurunuz');
       return;
     }
 
-    setIsAdding(true);
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/suppliers/my-products`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(formData),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setProducts([...products, data]);
+    addProductMutation.mutate(formData as any, {
+      onSuccess: () => {
         setFormData({
           product_name: '',
           product_category: '',
@@ -95,37 +61,13 @@ export default function SupplierDashboardPage() {
           co2e_per_unit_kg: 0,
         });
         setShowForm(false);
-        toast.success('Ürün başarıyla eklendi!');
-      } else {
-        throw new Error('Ürün eklenemedi');
-      }
-    } catch (err) {
-      toast.error('Ürün ekleme başarısız');
-    } finally {
-      setIsAdding(false);
-    }
+      },
+    });
   };
 
-  const handleDeleteProduct = async (productId: number) => {
+  const handleDeleteProduct = (productId: number) => {
     if (!confirm('Ürünü silmek istediğinize emin misiniz?')) return;
-
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/suppliers/products/${productId}`,
-        {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` },
-        }
-      );
-
-      if (response.ok) {
-        setProducts(products.filter((p) => p.id !== productId));
-        toast.success('Ürün silindi');
-      }
-    } catch (err) {
-      toast.error('Silme işlemi başarısız');
-    }
+    deleteProductMutation.mutate(productId as any);
   };
 
   return (
@@ -180,9 +122,9 @@ export default function SupplierDashboardPage() {
                   placeholder="Örn: Pamuk İpliği"
                   value={formData.product_name}
                   onChange={(e) =>
-                    setFormData({ ...formData, product_name: e.target.value })
-                  }
-                  disabled={isAdding}
+                  setFormData({ ...formData, product_name: e.target.value })
+                }
+                disabled={addProductMutation.isPending}
                   className="w-full px-4 py-2 bg-slate-700/50 border border-emerald-500/30 rounded-lg text-white text-sm placeholder-emerald-300/50 focus:outline-none focus:border-emerald-400"
                 />
               </div>
@@ -195,9 +137,9 @@ export default function SupplierDashboardPage() {
                 <select
                   value={formData.product_category}
                   onChange={(e) =>
-                    setFormData({ ...formData, product_category: e.target.value })
-                  }
-                  disabled={isAdding}
+                  setFormData({ ...formData, product_category: e.target.value })
+                }
+                disabled={addProductMutation.isPending}
                   className="w-full px-4 py-2 bg-slate-700/50 border border-emerald-500/30 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-400"
                 >
                   <option value="">Kategori Seçin</option>
@@ -218,9 +160,9 @@ export default function SupplierDashboardPage() {
                   <select
                     value={formData.unit}
                     onChange={(e) =>
-                      setFormData({ ...formData, unit: e.target.value })
-                    }
-                    disabled={isAdding}
+                    setFormData({ ...formData, unit: e.target.value })
+                  }
+                  disabled={addProductMutation.isPending}
                     className="w-full px-4 py-2 bg-slate-700/50 border border-emerald-500/30 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-400"
                   >
                     {units.map((unit) => (
@@ -245,7 +187,7 @@ export default function SupplierDashboardPage() {
                         co2e_per_unit_kg: parseFloat(e.target.value) || 0,
                       })
                     }
-                    disabled={isAdding}
+                    disabled={addProductMutation.isPending}
                     className="w-full px-4 py-2 bg-slate-700/50 border border-emerald-500/30 rounded-lg text-white text-sm placeholder-emerald-300/50 focus:outline-none focus:border-emerald-400"
                   />
                 </div>
@@ -255,10 +197,10 @@ export default function SupplierDashboardPage() {
               <div className="flex gap-3">
                 <button
                   onClick={handleAddProduct}
-                  disabled={isAdding}
+                  disabled={addProductMutation.isPending}
                   className="flex-1 px-4 py-2 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white font-bold rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {isAdding ? (
+                  {addProductMutation.isPending ? (
                     <>
                       <Loader className="w-4 h-4 animate-spin" />
                       Kaydediliyor...
@@ -272,7 +214,7 @@ export default function SupplierDashboardPage() {
                 </button>
                 <button
                   onClick={() => setShowForm(false)}
-                  disabled={isAdding}
+                  disabled={addProductMutation.isPending}
                   className="flex-1 px-4 py-2 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10 font-bold rounded-lg transition-all disabled:opacity-50"
                 >
                   İptal
@@ -323,6 +265,50 @@ export default function SupplierDashboardPage() {
                       <p className="text-sm text-emerald-300/70">
                         <strong>{product.co2e_per_unit_kg.toFixed(2)}</strong> kg CO2e / {product.unit}
                       </p>
+                      
+                      {/* Benchmark Karşılaştırması */}
+                      {product.benchmark && (
+                        <div className="mt-3 p-3 bg-cyan-500/10 rounded-lg border border-cyan-500/30 space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-cyan-300/70">Sektör Ortalaması:</span>
+                            <span className="text-cyan-300 font-semibold">
+                              {product.benchmark.category_avg.toFixed(2)} kg CO2e
+                            </span>
+                          </div>
+                          
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-cyan-300/70">Performansınız:</span>
+                            <div className="flex items-center gap-1">
+                              {product.benchmark.performance_delta_pct < 0 ? (
+                                <>
+                                  <TrendingDown className="w-3 h-3 text-green-400" />
+                                  <span className="text-green-400 font-semibold">
+                                    {Math.abs(product.benchmark.performance_delta_pct)}% daha iyi
+                                  </span>
+                                </>
+                              ) : product.benchmark.performance_delta_pct > 0 ? (
+                                <>
+                                  <TrendingUp className="w-3 h-3 text-orange-400" />
+                                  <span className="text-orange-400 font-semibold">
+                                    {product.benchmark.performance_delta_pct}% daha yüksek
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="text-cyan-300 font-semibold">
+                                  Ortalamada
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {product.co2e_per_unit_kg <= product.benchmark.best_in_class && (
+                            <div className="flex items-center gap-1 text-xs text-yellow-300 pt-1 border-t border-cyan-500/30">
+                              <Award className="w-3 h-3" />
+                              <span className="font-semibold">Sınıfının en iyisi!</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <button

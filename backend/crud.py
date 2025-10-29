@@ -36,13 +36,14 @@ def create_user_company(db: Session, company: schemas.CompanyCreate, user_id: in
     db.flush()
 
     # 3. Şimdi, ID'si belli olan şirkete, sahibini 'owner' rolüyle üye olarak ekle
-    # Doğrudan ara tabloya (association table) ekleme yapıyoruz.
-    insert_stmt = models.company_members_association.insert().values(
+    # Yeni Member model'ini kullan
+    member = models.Member(
         user_id=user_id,
         company_id=db_company.id,
-        role=models.CompanyMemberRole.owner  # Rolü 'owner' olarak ata
+        role=models.CompanyMemberRole.owner,
+        facility_id=None  # Owner tüm tesislere erişebilir
     )
-    db.execute(insert_stmt)
+    db.add(member)
 
     # 4. Tüm işlemleri veritabanına kaydet
     db.commit()
