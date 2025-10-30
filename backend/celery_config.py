@@ -3,6 +3,8 @@
 from celery import Celery
 import os
 from dotenv import load_dotenv
+import celery
+from database import SessionLocal
 
 load_dotenv()
 
@@ -43,6 +45,46 @@ app.conf.update(
         },
     }
 )
+
+# Kuyruklar (routing)
+app.conf.task_queues = {
+    'q_ingestion': {},
+    'q_invalid_data': {},
+    'q_reports': {},
+    'q_analytics': {},
+    'q_dead_letter': {},
+}
+
+
+class DBTask(celery.Task):
+    _db = None
+
+    def after_return(self, status, retval, task_id, args, kwargs, einfo):
+        if self._db is not None:
+            self._db.close()
+            self._db = None
+
+    @property
+    def db(self):
+        if self._db is None:
+            self._db = SessionLocal()
+        return self._db
+
+
+class DeadLetterTask(DBTask):
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        try:
+            # Orijinal event argümanı varsayımı: args[0]
+            original_event = args[0] if args else {}
+            # DLQ'ya yönlendir
+            from celery_config import app as _app
+            _app.send_task(
+                name='tasks.system.handle_dead_letter',
+                args=[self.name, original_event, str(exc)],
+                queue='q_dead_letter'
+            )
+        except Exception:
+            pass
 
 if __name__ == '__main__':
     app.start()

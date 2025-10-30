@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 import crud
+import os
+from services.validation_service import EmissionRow, validate_data
 # YENİ: Pluggable calculation service factory
 from services import get_calculation_service, ICalculationService
 
@@ -196,33 +198,79 @@ class CSVProcessor:
                     success=False
                 )
             
-            # Pydantic şeması ile validate et
+            # DRY: Pydantic EmissionRow ile doğrula
+            try:
+                emission_row = validate_data({
+                    "activity_id": activity_type.value,
+                    "quantity": quantity,
+                    "unit": unit,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                }, EmissionRow)
+            except ValueError as ve:
+                return schemas.ActivityDataCSVRow(
+                    row_number=row_number,
+                    activity_type=activity_type_str,
+                    quantity=quantity,
+                    unit=unit,
+                    start_date=start_date_str,
+                    end_date=end_date_str,
+                    error=str(ve),
+                    success=False
+                )
+
+            # API şeması ile uyum için dönüştür
             activity_data = schemas.ActivityDataCreate(
                 activity_type=activity_type,
-                quantity=quantity,
-                unit=unit,
-                start_date=start_date,
-                end_date=end_date
+                quantity=emission_row.quantity,
+                unit=emission_row.unit,
+                start_date=emission_row.start_date,
+                end_date=emission_row.end_date
             )
             
-            # Emisyon hesapla
-            calculation_result = self.calculation_service.calculate_for_activity(activity_data)
-            
-            # Veritabanına kaydet
-            db_activity_data = models.ActivityData(
-                facility_id=self.facility_id,
-                activity_type=activity_data.activity_type,
-                quantity=activity_data.quantity,
-                unit=activity_data.unit,
-                start_date=activity_data.start_date,
-                end_date=activity_data.end_date,
-                scope=calculation_result.scope,
-                calculated_co2e_kg=calculation_result.total_co2e_kg,
-                is_fallback_calculation=calculation_result.is_fallback  # Yasal şeffaflık
-            )
-            
-            self.db.add(db_activity_data)
-            self.db.flush()  # ID'yi al ama henüz commit etme
+            # EVENT PIPELINE: Doğrudan DB yerine event kuyruğuna gönder
+            if os.getenv('EVENT_PIPELINE_ENABLED', 'true').lower() == 'true':
+                try:
+                    from services.events import ActivityValidatedEvent, publish_event
+                    emission_payload = EmissionRow(
+                        activity_id=activity_type.value,
+                        quantity=activity_data.quantity,
+                        unit=activity_data.unit,
+                        start_date=activity_data.start_date,
+                        end_date=activity_data.end_date,
+                    )
+                    event = ActivityValidatedEvent(
+                        payload=emission_payload,
+                        context={"facility_id": self.facility_id, "user_id": None}
+                    )
+                    publish_event(event, queue='q_activity_validated')
+                except Exception as e:
+                    return schemas.ActivityDataCSVRow(
+                        row_number=row_number,
+                        activity_type=activity_type.value,
+                        quantity=quantity,
+                        unit=unit,
+                        start_date=start_date_str,
+                        end_date=end_date_str,
+                        error=f"Event yayınlama hatası: {str(e)}",
+                        success=False
+                    )
+            else:
+                # Emisyon hesapla ve DB'ye yaz (geriye uyumluluk)
+                calculation_result = self.calculation_service.calculate_for_activity(activity_data)
+                db_activity_data = models.ActivityData(
+                    facility_id=self.facility_id,
+                    activity_type=activity_data.activity_type,
+                    quantity=activity_data.quantity,
+                    unit=activity_data.unit,
+                    start_date=activity_data.start_date,
+                    end_date=activity_data.end_date,
+                    scope=calculation_result.scope,
+                    calculated_co2e_kg=calculation_result.total_co2e_kg,
+                    is_fallback_calculation=calculation_result.is_fallback
+                )
+                self.db.add(db_activity_data)
+                self.db.flush()
             
             return schemas.ActivityDataCSVRow(
                 row_number=row_number,

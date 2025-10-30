@@ -579,3 +579,27 @@ class LeaderboardEntry(Base):
     
     # İlişkiler
     company = relationship("Company")
+
+
+# ===== Data Quality & Event Log =====
+class DataQualityIssue(Base):
+    __tablename__ = "data_quality_issues"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(String, index=True)
+    facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=True, index=True)
+    field = Column(String, nullable=True)
+    code = Column(String, nullable=False)
+    message = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class EventLog(Base):
+    __tablename__ = "event_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(String, unique=True, index=True)
+    event_type = Column(String, index=True)
+    status = Column(String, default="received", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    processed_at = Column(DateTime, nullable=True)

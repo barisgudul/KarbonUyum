@@ -583,25 +583,53 @@ def create_activity_data_for_facility(
         models.CompanyMemberRole.admin, models.CompanyMemberRole.data_entry, models.CompanyMemberRole.owner
     ])
 
-    # YENİ: Climatiq API ile hesaplama
-    calc_service = get_calculation_service(db=db)
-    calculation_result = calc_service.calculate_for_activity(activity_data)
-
-    # Veritabanına kaydet (scope ve fallback bilgisi ile)
-    db_activity_data = models.ActivityData(
-        facility_id=facility_id,
-        activity_type=activity_data.activity_type,
-        quantity=activity_data.quantity,
-        unit=activity_data.unit,
-        start_date=activity_data.start_date,
-        end_date=activity_data.end_date,
-        scope=calculation_result.scope,
-        calculated_co2e_kg=calculation_result.total_co2e_kg,
-        is_fallback_calculation=calculation_result.is_fallback  # Yasal şeffaflık
-    )
-    
-    db.add(db_activity_data)
-    db.commit()
+    # EVENT PIPELINE
+    if os.getenv('EVENT_PIPELINE_ENABLED', 'true').lower() == 'true':
+        try:
+            from services.validation_service import EmissionRow
+            from services.events import ActivityValidatedEvent, publish_event
+            emission = EmissionRow(
+                activity_id=activity_data.activity_type.value,
+                quantity=activity_data.quantity,
+                unit=activity_data.unit,
+                start_date=activity_data.start_date,
+                end_date=activity_data.end_date,
+            )
+            event = ActivityValidatedEvent(payload=emission, context={"facility_id": facility_id, "user_id": current_user.id})
+            task_id = publish_event(event, queue='q_activity_validated')
+            return {
+                "id": 0,
+                "facility_id": facility_id,
+                "activity_type": activity_data.activity_type,
+                "quantity": activity_data.quantity,
+                "unit": activity_data.unit,
+                "start_date": activity_data.start_date,
+                "end_date": activity_data.end_date,
+                "scope": models.ScopeType.scope_2 if activity_data.activity_type == models.ActivityType.electricity else models.ScopeType.scope_1,
+                "co2e_emissions": None,
+                "is_fallback_calculation": False,
+                "is_simulation": False,
+                "enqueue_task_id": task_id
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Event yayınlanamadı: {e}")
+    else:
+        # YENİ: Climatiq API ile hesaplama (geriye uyumluluk)
+        calc_service = get_calculation_service(db=db)
+        calculation_result = calc_service.calculate_for_activity(activity_data)
+        db_activity_data = models.ActivityData(
+            facility_id=facility_id,
+            activity_type=activity_data.activity_type,
+            quantity=activity_data.quantity,
+            unit=activity_data.unit,
+            start_date=activity_data.start_date,
+            end_date=activity_data.end_date,
+            scope=calculation_result.scope,
+            calculated_co2e_kg=calculation_result.total_co2e_kg,
+            is_fallback_calculation=calculation_result.is_fallback
+        )
+        db.add(db_activity_data)
+        db.commit()
     
     # YENİ: Eğer cost_tl verilmişse, otomatik birim maliyet hesapla
     if activity_data.cost_tl and activity_data.cost_tl > 0 and activity_data.quantity > 0:
@@ -677,24 +705,51 @@ def update_activity_data(
         models.CompanyMemberRole.admin, models.CompanyMemberRole.data_entry, models.CompanyMemberRole.owner
     ])
 
-    # YENİ: Climatiq API ile hesaplama
-    calc_service = get_calculation_service(db=db)
-    calculation_result = calc_service.calculate_for_activity(activity_data)
-
-    # Verileri güncelle
-    db_data.activity_type = activity_data.activity_type
-    db_data.quantity = activity_data.quantity
-    db_data.unit = activity_data.unit
-    db_data.start_date = activity_data.start_date
-    db_data.end_date = activity_data.end_date
-    db_data.scope = calculation_result.scope
-    db_data.calculated_co2e_kg = calculation_result.total_co2e_kg
-    db_data.is_fallback_calculation = calculation_result.is_fallback  # Yasal şeffaflık
-    
-    db.commit()
-    db.refresh(db_data)
-    
-    return db_data
+    # EVENT PIPELINE
+    if os.getenv('EVENT_PIPELINE_ENABLED', 'true').lower() == 'true':
+        try:
+            from services.validation_service import EmissionRow
+            from services.events import ActivityValidatedEvent, publish_event
+            emission = EmissionRow(
+                activity_id=activity_data.activity_type.value,
+                quantity=activity_data.quantity,
+                unit=activity_data.unit,
+                start_date=activity_data.start_date,
+                end_date=activity_data.end_date,
+            )
+            event = ActivityValidatedEvent(payload=emission, context={"facility_id": db_data.facility_id, "user_id": current_user.id})
+            task_id = publish_event(event, queue='q_activity_validated')
+            return {
+                "id": db_data.id,
+                "facility_id": db_data.facility_id,
+                "activity_type": activity_data.activity_type,
+                "quantity": activity_data.quantity,
+                "unit": activity_data.unit,
+                "start_date": activity_data.start_date,
+                "end_date": activity_data.end_date,
+                "scope": db_data.scope,
+                "co2e_emissions": db_data.calculated_co2e_kg,
+                "is_fallback_calculation": db_data.is_fallback_calculation,
+                "is_simulation": db_data.is_simulation,
+                "enqueue_task_id": task_id
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Event yayınlanamadı: {e}")
+    else:
+        # Geriye uyumluluk: hesapla ve kaydet
+        calc_service = get_calculation_service(db=db)
+        calculation_result = calc_service.calculate_for_activity(activity_data)
+        db_data.activity_type = activity_data.activity_type
+        db_data.quantity = activity_data.quantity
+        db_data.unit = activity_data.unit
+        db_data.start_date = activity_data.start_date
+        db_data.end_date = activity_data.end_date
+        db_data.scope = calculation_result.scope
+        db_data.calculated_co2e_kg = calculation_result.total_co2e_kg
+        db_data.is_fallback_calculation = calculation_result.is_fallback
+        db.commit()
+        db.refresh(db_data)
+        return db_data
 
 @app.get("/dashboard/summary", response_model=schemas.DashboardSummary)
 def get_summary_for_dashboard(
@@ -1267,6 +1322,23 @@ def verify_invoice(
         
         db.commit()
         db.refresh(activity_data)
+
+        # EVENT PIPELINE: invoice.verified -> activity.validated zinciri
+        if os.getenv('EVENT_PIPELINE_ENABLED', 'true').lower() == 'true':
+            try:
+                from services.events import InvoiceVerifiedEvent, publish_event
+                ev = InvoiceVerifiedEvent(payload={
+                    'invoice_id': invoice_id,
+                    'facility_id': invoice.facility_id,
+                    'activity_type': activity_data.activity_type.value,
+                    'quantity': activity_data.quantity,
+                    'unit': activity_data.unit,
+                    'start_date': activity_data.start_date.isoformat(),
+                    'end_date': activity_data.end_date.isoformat(),
+                })
+                publish_event(ev, queue='q_activity_validated')
+            except Exception as e:
+                logger.warning(f"Invoice verified event yayınlanamadı: {e}")
         
         # Cost bilgisini güncelle (Finansal tahminler)
         if verification.extracted_data.cost_tl and verification.extracted_data.cost_tl > 0:
@@ -1979,6 +2051,15 @@ def add_supplier_product(
         
         logger.info(f"✅ Ürün eklendi: {product.product_name} ({supplier.company_name})")
         
+        # EVENT PIPELINE: supplier.product.created
+        if os.getenv('EVENT_PIPELINE_ENABLED', 'true').lower() == 'true':
+            try:
+                from services.events import BaseEvent, publish_event
+                ev = BaseEvent(event_type='supplier.product.created', source='api', idempotency_key=f"supplier_product:{db_product.id}")
+                publish_event(ev, queue='q_activity_validated')
+            except Exception as e:
+                logger.warning(f"Supplier product event yayınlanamadı: {e}")
+
         return db_product
         
     except Exception as e:
@@ -2107,6 +2188,15 @@ def record_scope3_emission(
         db.add(db_emission)
         db.commit()
         db.refresh(db_emission)
+
+        # EVENT PIPELINE: scope3.recorded
+        if os.getenv('EVENT_PIPELINE_ENABLED', 'true').lower() == 'true':
+            try:
+                from services.events import BaseEvent, publish_event
+                event = BaseEvent(event_type='scope3.recorded', source='api', idempotency_key=f"scope3:{db_emission.id}")
+                publish_event(event, queue='q_activity_validated')
+            except Exception as e:
+                logger.warning(f"Scope3 event yayınlanamadı: {e}")
         
         logger.info(
             f"✅ Scope 3 Emisyon kaydı: {emission.quantity_purchased} {product.unit} "
@@ -2219,6 +2309,15 @@ def create_supplier_product(
         f"({product_data.co2e_per_unit_kg} kg CO2e / {product_data.unit})"
     )
     
+    # EVENT PIPELINE: supplier.product.created
+    if os.getenv('EVENT_PIPELINE_ENABLED', 'true').lower() == 'true':
+        try:
+            from services.events import BaseEvent, publish_event
+            ev = BaseEvent(event_type='supplier.product.created', source='api', idempotency_key=f"supplier_product:{db_product.id}")
+            publish_event(ev, queue='q_activity_validated')
+        except Exception as e:
+            logger.warning(f"Supplier product event yayınlanamadı: {e}")
+
     return db_product
 
 
