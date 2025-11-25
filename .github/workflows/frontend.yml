@@ -15,7 +15,6 @@ jobs:
 
     env:
       # Build için ortam değişkenleri
-      NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: 1
 
     steps:
