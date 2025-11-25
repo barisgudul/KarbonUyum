@@ -35,10 +35,21 @@ jobs:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/test_karbonuyum
       SECRET_KEY: test-secret-key-for-ci-only
       ALGORITHM: HS256
+      
+      # GITHUB SECRETS'tan gelecek değişkenler
+      CLIMATIQ_API_KEY: ${{ secrets.CLIMATIQ_API_KEY }}
+      SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+      SENDGRID_FROM_EMAIL: ${{ secrets.SENDGRID_FROM_EMAIL }}
+      # Google Vision için dosya yolu
+      GOOGLE_APPLICATION_CREDENTIALS: ./google-credentials.json
 
     steps:
       - name: 1. Kodu Al (Checkout)
         uses: actions/checkout@v4
+
+      # Secret'taki JSON verisini dosyaya dönüştürür
+      - name: Google Credentials Dosyasını Oluştur
+        run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > ./google-credentials.json
 
       - name: 2. Python Ortamını Kur
         uses: actions/setup-python@v5
