@@ -35,7 +35,7 @@ jobs:
 
       - name: 4. Lint Kontrolü
         working-directory: ./frontend
-        run: npx eslint .
+        run: npm run lint
 
       - name: 5. Production için Build Al
         working-directory: ./frontend
