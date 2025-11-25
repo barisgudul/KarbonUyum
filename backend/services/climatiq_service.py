@@ -2,12 +2,14 @@
 
 import logging
 import os
-import httpx
 from datetime import date
+
+import httpx
 from fastapi import HTTPException, status
 
 import models
 import schemas
+
 from .calculation_interface import ICalculationService
 
 logger = logging.getLogger(__name__)

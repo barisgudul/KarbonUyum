@@ -1,13 +1,11 @@
 # backend/services/invoice_ocr_service.py
 
-import os
-import io
-from typing import Optional, Dict, Any
-from google.cloud import vision
-from pdf2image import convert_from_path, convert_from_bytes
-from PIL import Image
 import logging
-from datetime import datetime, date
+from datetime import datetime
+from typing import Any, Dict
+
+from google.cloud import vision
+from pdf2image import convert_from_path
 
 logger = logging.getLogger(__name__)
 

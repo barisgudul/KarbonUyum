@@ -13,6 +13,29 @@ jobs:
   build-test-and-deploy:
     runs-on: ubuntu-latest # İş akışının çalışacağı sanal makine
 
+    # PostgreSQL hizmetini test için başlat
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_karbonuyum
+        ports:
+          - 5432:5432
+        # Veritabanının hazır olmasını bekle
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Test için ortam değişkenleri
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_karbonuyum
+      SECRET_KEY: test-secret-key-for-ci-only
+      ALGORITHM: HS256
+
     steps:
       - name: 1. Kodu Al (Checkout)
         uses: actions/checkout@v4
@@ -21,6 +44,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11' # Projenizin Python versiyonu
+          cache: 'pip' # pip bağımlılıklarını önbelleğe al
 
       - name: 3. Bağımlılıkları Yükle
         run: |
@@ -32,12 +56,19 @@ jobs:
           pip install pip-audit
           pip-audit --ignore-vuln GHSA-wj6h-64fc-37mp # Kararlaştırdığımız komut
 
-      - name: 5. Testleri Çalıştır (Varsa)
-        # Eğer testleriniz varsa bu adımı ekleyin
-        # run: pytest backend/tests/
-        run: echo "Test adımı atlandı."
+      - name: 5. Linting Kontrolü
+        run: |
+          # Linting
+          ruff check backend/
 
-      - name: 6. Production'a Deploy Et (Sadece main branch'e push yapıldığında)
+      - name: 6. Testleri Çalıştır
+        run: |
+          # PYTHONPATH'i ayarla ki modüller bulunsun
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/backend
+          # Testler
+          pytest backend/tests/ -v
+
+      - name: 7. Production'a Deploy Et (Sadece main branch'e push yapıldığında)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           echo "Backend production'a deploy ediliyor..."

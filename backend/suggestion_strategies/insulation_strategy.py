@@ -1,12 +1,11 @@
 ### backend/suggestion_strategies/insulation_strategy.py
-from sqlalchemy.orm import Session
+from typing import List, Union
+
 import models
 import schemas
-from typing import List, Union
-from suggestion_strategies.base import BaseSuggestionStrategy
-from sqlalchemy import func
-from datetime import date, timedelta
 from services.data_analysis_service import DataAnalysisService
+from suggestion_strategies.base import BaseSuggestionStrategy
+
 
 class InsulationStrategy(BaseSuggestionStrategy):
     def is_applicable(self) -> bool:

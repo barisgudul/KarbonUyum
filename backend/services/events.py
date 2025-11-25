@@ -2,10 +2,9 @@
 """
 This module contains the events service for the backend.
 """
-import os
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 

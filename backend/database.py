@@ -6,13 +6,14 @@ Includes SSL support for encrypted production connections and
 comprehensive connection pooling.
 """
 
-from sqlalchemy import create_engine, event
+import logging
+import os
+
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
-import os
-from dotenv import load_dotenv
-import logging
 
 logger = logging.getLogger(__name__)
 

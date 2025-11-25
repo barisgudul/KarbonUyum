@@ -4,10 +4,11 @@ This module contains the analytics tasks for the backend.
 """
 import logging
 from datetime import datetime, timedelta
+
 from sqlalchemy import func
 
-from celery_config import app, DBTask
 import models
+from celery_config import DBTask, app
 
 logger = logging.getLogger(__name__)
 

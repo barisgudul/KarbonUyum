@@ -1,0 +1,313 @@
+### backend/tests/test_calculation_services.py
+"""
+Unit tests for calculation service abstraction and provider selection.
+
+Tests verify that:
+1. ICalculationService interface is properly implemented
+2. ClimatiqService and CalculationService both work
+3. Factory function returns correct provider based on env var
+4. Fallback mechanism works when Climatiq fails
+"""
+
+from datetime import date
+from unittest.mock import Mock, patch
+
+import pytest
+from services.calculation_service_DEPRECATED import CalculationService
+
+import models
+import schemas
+from services import ICalculationService, get_calculation_service
+from services.climatiq_service import ClimatiqService
+
+
+class TestCalculationServiceInterface:
+    """Verify that both services implement ICalculationService correctly."""
+    
+    def test_climatiq_service_implements_interface(self):
+        """ClimatiqService should be an instance of ICalculationService."""
+        service = ClimatiqService(year=2024)
+        assert isinstance(service, ICalculationService)
+    
+    def test_calculation_service_implements_interface(self, mocker):
+        """CalculationService should be an instance of ICalculationService."""
+        mock_db = Mock()
+        service = CalculationService(db=mock_db, year=2024)
+        assert isinstance(service, ICalculationService)
+    
+    def test_climatiq_service_has_required_methods(self):
+        """ClimatiqService must have all required interface methods."""
+        service = ClimatiqService(year=2024)
+        
+        assert hasattr(service, 'calculate_for_activity')
+        assert hasattr(service, 'get_provider_name')
+        assert hasattr(service, 'health_check')
+        assert callable(service.calculate_for_activity)
+        assert callable(service.get_provider_name)
+        assert callable(service.health_check)
+    
+    def test_calculation_service_has_required_methods(self, mocker):
+        """CalculationService must have all required interface methods."""
+        mock_db = Mock()
+        service = CalculationService(db=mock_db, year=2024)
+        
+        assert hasattr(service, 'calculate_for_activity')
+        assert hasattr(service, 'get_provider_name')
+        assert hasattr(service, 'health_check')
+        assert callable(service.calculate_for_activity)
+        assert callable(service.get_provider_name)
+        assert callable(service.health_check)
+
+
+class TestClimatiqService:
+    """Test ClimatiqService functionality."""
+    
+    def test_get_provider_name(self):
+        """Provider name should be 'climatiq'."""
+        service = ClimatiqService(year=2024)
+        assert service.get_provider_name() == "climatiq"
+    
+    def test_health_check_with_api_key(self, monkeypatch):
+        """Health check should return True when API key is set."""
+        monkeypatch.setenv("CLIMATIQ_API_KEY", "test_key_123")
+        service = ClimatiqService(year=2024)
+        assert service.health_check() is True
+    
+    def test_health_check_without_api_key(self, monkeypatch):
+        """Health check should return False when API key is not set."""
+        monkeypatch.delenv("CLIMATIQ_API_KEY", raising=False)
+        service = ClimatiqService(year=2024)
+        assert service.health_check() is False
+    
+    @patch('services.climatiq_service.httpx.Client')
+    def test_calculate_for_activity_success(self, mock_http_client, monkeypatch):
+        """Successful calculation should return correct result."""
+        monkeypatch.setenv("CLIMATIQ_API_KEY", "test_key")
+        
+        # Mock API response
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "co2e": 45.23,
+            "emission_factor": {
+                "id": "electricity-supply_grid-tr",
+                "factor": 0.301
+            }
+        }
+        mock_response.raise_for_status.return_value = None
+        
+        mock_client_instance = Mock()
+        mock_client_instance.__enter__.return_value.post.return_value = mock_response
+        mock_http_client.return_value = mock_client_instance
+        
+        service = ClimatiqService(year=2024)
+        activity_data = schemas.ActivityDataBase(
+            activity_type=models.ActivityType.electricity,
+            quantity=150,
+            unit="kWh",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 1, 31)
+        )
+        
+        result = service.calculate_for_activity(activity_data)
+        
+        assert result.total_co2e_kg == 45.23
+        assert result.is_fallback is False
+        assert result.scope == models.ScopeType.scope_2
+        assert result.emission_factor_used == "electricity-supply_grid-tr"
+
+
+class TestCalculationServiceFallback:
+    """Test CalculationService (fallback) functionality."""
+    
+    def test_get_provider_name(self):
+        """Provider name should be 'internal_fallback'."""
+        mock_db = Mock()
+        mock_db.query.return_value.filter.return_value.all.return_value = []
+        service = CalculationService(db=mock_db, year=2024)
+        assert service.get_provider_name() == "internal_fallback"
+    
+    def test_health_check_with_factors(self):
+        """Health check should return True when emission factors are loaded."""
+        mock_db = Mock()
+        mock_factor = Mock()
+        mock_factor.value = 0.475
+        mock_db.query.return_value.filter.return_value.all.return_value = [mock_factor]
+        
+        service = CalculationService(db=mock_db, year=2024)
+        assert service.health_check() is True
+    
+    def test_health_check_without_factors(self):
+        """Health check should return False when no emission factors available."""
+        mock_db = Mock()
+        mock_db.query.return_value.filter.return_value.all.return_value = []
+        
+        service = CalculationService(db=mock_db, year=2024)
+        assert service.health_check() is False
+    
+    def test_calculate_for_activity_marks_as_fallback(self):
+        """Calculations should always mark is_fallback=True."""
+        mock_db = Mock()
+        
+        # Mock emission factor
+        mock_factor = Mock(spec=models.EmissionFactor)
+        mock_factor.value = 0.475
+        mock_factor.key = "electricity_grid_TUR"
+        
+        mock_db.query.return_value.filter.return_value.all.return_value = [mock_factor]
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_factor
+        
+        service = CalculationService(db=mock_db, year=2024)
+        activity_data = schemas.ActivityDataBase(
+            activity_type=models.ActivityType.electricity,
+            quantity=150,
+            unit="kWh",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 1, 31)
+        )
+        
+        result = service.calculate_for_activity(activity_data)
+        
+        assert result.is_fallback is True
+        assert result.total_co2e_kg > 0  # Should calculate something
+
+
+class TestFactoryFunction:
+    """Test get_calculation_service factory function."""
+    
+    def test_factory_returns_climatiq_by_default(self, monkeypatch):
+        """Factory should return ClimatiqService by default."""
+        monkeypatch.delenv("CALCULATION_PROVIDER", raising=False)
+        monkeypatch.setenv("CLIMATIQ_API_KEY", "test_key")
+        
+        mock_db = Mock()
+        service = get_calculation_service(db=mock_db)
+        
+        assert isinstance(service, ClimatiqService)
+        assert service.get_provider_name() == "climatiq"
+    
+    def test_factory_returns_climatiq_when_explicitly_set(self, monkeypatch):
+        """Factory should return ClimatiqService when provider='climatiq'."""
+        monkeypatch.setenv("CALCULATION_PROVIDER", "climatiq")
+        monkeypatch.setenv("CLIMATIQ_API_KEY", "test_key")
+        
+        mock_db = Mock()
+        service = get_calculation_service(db=mock_db)
+        
+        assert isinstance(service, ClimatiqService)
+    
+    def test_factory_returns_fallback_when_set(self, monkeypatch):
+        """Factory should return CalculationService when provider='fallback'."""
+        monkeypatch.setenv("CALCULATION_PROVIDER", "fallback")
+        
+        mock_db = Mock()
+        mock_db.query.return_value.filter.return_value.all.return_value = []
+        
+        service = get_calculation_service(db=mock_db)
+        
+        assert isinstance(service, CalculationService)
+        assert service.get_provider_name() == "internal_fallback"
+    
+    def test_factory_returns_fallback_for_internal_setting(self, monkeypatch):
+        """Factory should accept 'internal' as alias for fallback."""
+        monkeypatch.setenv("CALCULATION_PROVIDER", "internal")
+        
+        mock_db = Mock()
+        mock_db.query.return_value.filter.return_value.all.return_value = []
+        
+        service = get_calculation_service(db=mock_db)
+        
+        assert isinstance(service, CalculationService)
+    
+    def test_factory_raises_on_unknown_provider(self, monkeypatch):
+        """Factory should raise ValueError for unknown provider."""
+        monkeypatch.setenv("CALCULATION_PROVIDER", "unknown_provider")
+        
+        mock_db = Mock()
+        
+        with pytest.raises(ValueError, match="Unknown calculation provider"):
+            get_calculation_service(db=mock_db)
+    
+    def test_factory_respects_year_parameter(self, monkeypatch):
+        """Factory should pass year parameter to service."""
+        monkeypatch.setenv("CLIMATIQ_API_KEY", "test_key")
+        monkeypatch.delenv("CALCULATION_PROVIDER", raising=False)
+        
+        mock_db = Mock()
+        service = get_calculation_service(db=mock_db, year=2025)
+        
+        assert service.year == 2025
+
+
+class TestActivityDataValidation:
+    """Test validation of activity data before calculation."""
+    
+    def test_positive_quantity_validation(self):
+        """Activity data should reject negative or zero quantities."""
+        with pytest.raises(ValueError):
+            schemas.ActivityDataCreate(
+                activity_type=models.ActivityType.electricity,
+                quantity=-100,  # Invalid: negative
+                unit="kWh",
+                start_date=date(2024, 1, 1),
+                end_date=date(2024, 1, 31)
+            )
+    
+    def test_date_validation_end_after_start(self):
+        """End date should be after start date."""
+        with pytest.raises(ValueError):
+            schemas.ActivityDataCreate(
+                activity_type=models.ActivityType.electricity,
+                quantity=100,
+                unit="kWh",
+                start_date=date(2024, 1, 31),
+                end_date=date(2024, 1, 1)  # Invalid: end before start
+            )
+    
+    def test_no_future_dates(self):
+        """Dates should not be in the future."""
+        tomorrow = date.today() + __import__('datetime').timedelta(days=1)
+        
+        with pytest.raises(ValueError):
+            schemas.ActivityDataCreate(
+                activity_type=models.ActivityType.electricity,
+                quantity=100,
+                unit="kWh",
+                start_date=date.today(),
+                end_date=tomorrow  # Invalid: future date
+            )
+
+
+class TestEmissionCalculationResult:
+    """Test EmissionCalculationResult schema."""
+    
+    def test_result_structure(self):
+        """EmissionCalculationResult should have all required fields."""
+        result = schemas.EmissionCalculationResult(
+            total_co2e_kg=45.23,
+            scope=models.ScopeType.scope_2,
+            emission_factor_used="electricity-supply_grid-tr",
+            emission_factor_value=0.301,
+            calculation_year=2024,
+            is_fallback=False
+        )
+        
+        assert result.total_co2e_kg == 45.23
+        assert result.is_fallback is False
+        assert result.scope == models.ScopeType.scope_2
+    
+    def test_fallback_flag_tracking(self):
+        """is_fallback flag should be properly tracked."""
+        fallback_result = schemas.EmissionCalculationResult(
+            total_co2e_kg=42.5,
+            scope=models.ScopeType.scope_1,
+            emission_factor_used="fallback_defra_2023",
+            emission_factor_value=0.475,
+            calculation_year=2024,
+            is_fallback=True
+        )
+        
+        assert fallback_result.is_fallback is True
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

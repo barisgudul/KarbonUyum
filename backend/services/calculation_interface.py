@@ -7,6 +7,7 @@ This interface ensures that all calculation service implementations
 """
 
 from abc import ABC, abstractmethod
+
 import schemas
 
 

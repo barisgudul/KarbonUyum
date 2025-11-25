@@ -6,12 +6,10 @@ Celery görevleri - Asenkron, periyodik işlemler
 
 import logging
 from datetime import datetime, timedelta
-from sqlalchemy import func, and_
-from sqlalchemy.orm import Session
 
+import models
 from celery_config import app
 from database import SessionLocal
-import models
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +165,7 @@ def extract_invoice_data_with_ocr(file_path: str) -> dict:
     """
     try:
         import os
+
         from google.cloud import vision
         
         client = vision.ImageAnnotatorClient()
@@ -205,7 +204,7 @@ def extract_invoice_data_mock() -> dict:
     """
     Mock OCR sonucu - geliştirme için
     """
-    from datetime import date, timedelta
+    from datetime import date
     return {
         'raw_text': '[Mock OCR Output]',
         'activity_type': 'electricity',

@@ -6,16 +6,18 @@ Contains pluggable service implementations including calculation providers,
 benchmarking, data analysis, and more.
 """
 
-import os
 import logging
+import os
 from datetime import datetime
-from sqlalchemy.orm import Session
+
 from fastapi import Depends
+from sqlalchemy.orm import Session
+
+from database import get_db
 
 from .calculation_interface import ICalculationService
-from .climatiq_service import ClimatiqService
 from .calculation_service_DEPRECATED import CalculationService as InternalFallbackService
-from database import get_db
+from .climatiq_service import ClimatiqService
 
 logger = logging.getLogger(__name__)
 

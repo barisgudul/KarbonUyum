@@ -6,10 +6,10 @@ KOBİ'lere somut TL bazlı tasarruf potansiyeli gösterir
 """
 
 import logging
-from datetime import datetime, date, timedelta
-from typing import Dict, List, Optional, Tuple
+from datetime import date, timedelta
+from typing import Dict, List, Optional
+
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 
 import models
 import schemas

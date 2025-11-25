@@ -45,8 +45,8 @@ export default function SupplierAcceptPage() {
         >
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto" />
           <h2 className="text-2xl font-bold text-red-300">
-            {error?.response?.status === 404 
-              ? 'Davet bulunamadı' 
+            {(error as any)?.response?.status === 404
+              ? 'Davet bulunamadı'
               : 'Davet yüklenemedi'}
           </h2>
           <p className="text-red-300/70 text-sm">

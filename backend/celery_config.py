@@ -1,9 +1,11 @@
 # backend/celery_config.py
 
-from celery import Celery
 import os
-from dotenv import load_dotenv
+
 import celery
+from celery import Celery
+from dotenv import load_dotenv
+
 from database import SessionLocal
 
 load_dotenv()

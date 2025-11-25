@@ -6,8 +6,9 @@ AB'nin CBAM düzenlemelerine uygun XML rapor üretimi
 """
 
 import logging
-from datetime import datetime, date
-from typing import List, Dict, Any, Optional
+from datetime import date, datetime
+from typing import Dict
+
 from lxml import etree
 from sqlalchemy.orm import Session
 

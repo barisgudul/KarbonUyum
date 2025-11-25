@@ -1,10 +1,13 @@
 # backend/models.py
 
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Date, Enum, Float, Table, DateTime 
-from sqlalchemy.orm import relationship
 import enum
 from datetime import date, datetime
+
+from sqlalchemy import Boolean, Column, Date, DateTime, Enum, Float, ForeignKey, Integer, String, Table
+from sqlalchemy.orm import relationship
+
 from database import Base
+
 
 class ActivityType(str, enum.Enum):
     electricity = "electricity"

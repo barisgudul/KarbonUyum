@@ -11,8 +11,8 @@ Referans:
 - API Dokümantasyonu: https://www.climatiq.io/docs/api-reference/estimate
 """
 
-from typing import Dict
 from dataclasses import dataclass
+from typing import Dict
 
 
 @dataclass

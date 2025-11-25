@@ -1,11 +1,16 @@
 # backend/crud.py
-from sqlalchemy.orm import Session
-from sqlalchemy import func 
-from datetime import datetime, date, timedelta 
+from datetime import date, timedelta
+from typing import List, Optional
+
 from fastapi import HTTPException
-import models, schemas, auth
-import suggestion_engine 
-from typing import Optional, List
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+import auth
+import models
+import schemas
+import suggestion_engine
+
 
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()

@@ -8,13 +8,13 @@ Create Date: <tarih>
 """
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import Float, String
 
 # YENİ: Gerekli importları ekle
-from sqlalchemy.sql import table, column
-from sqlalchemy import String, Float
+from sqlalchemy.sql import column, table
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '8afd746183f8'

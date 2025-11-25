@@ -1,12 +1,11 @@
 ### backend/suggestion_strategies/ges_strategy.py
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+from typing import List, Union
+
 import models
 import schemas
-from datetime import date, timedelta
-from typing import List, Union
-from suggestion_strategies.base import BaseSuggestionStrategy
 from services.data_analysis_service import DataAnalysisService
+from suggestion_strategies.base import BaseSuggestionStrategy
+
 
 class GESSuggestionStrategy(BaseSuggestionStrategy):
     def is_applicable(self) -> bool:

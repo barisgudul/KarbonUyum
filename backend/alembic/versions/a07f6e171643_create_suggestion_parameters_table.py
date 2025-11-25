@@ -8,11 +8,11 @@ Create Date: 2025-10-19 20:34:18.950422
 """
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.sql import table, column
-from sqlalchemy import String, Float
+from sqlalchemy import Float, String
+from sqlalchemy.sql import column, table
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'a07f6e171643'

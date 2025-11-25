@@ -1,13 +1,16 @@
 # backend/auth_utils.py
+from typing import List, Optional
+
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List, Optional
+
+import auth
 
 # Projemizin diğer parçalarını import ediyoruz
 import crud
 import models
-import auth
 from database import get_db
+
 
 def require_superuser(current_user: models.User = Depends(auth.get_current_user)):
     if not current_user.is_superuser:

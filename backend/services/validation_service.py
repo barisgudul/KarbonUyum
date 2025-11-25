@@ -3,7 +3,7 @@
 This module contains the validation service for the backend.
 """
 from datetime import date
-from typing import Optional, Type, TypeVar, Any
+from typing import Optional, Type, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 

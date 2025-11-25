@@ -1,8 +1,12 @@
 ### backend/suggestion_strategies/base.py
 from abc import ABC, abstractmethod
-from sqlalchemy.orm import Session
-import models, schemas
 from typing import List, Union
+
+from sqlalchemy.orm import Session
+
+import models
+import schemas
+
 
 class BaseSuggestionStrategy(ABC):
     def __init__(self, company: models.Company, db: Session, params: dict):

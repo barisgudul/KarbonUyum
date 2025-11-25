@@ -1,10 +1,13 @@
 # backend/suggestion_engine.py
-import crud
 from typing import List, Union
+
+from sqlalchemy.orm import Session
+
+import crud
 import models
 import schemas
-from sqlalchemy.orm import Session
 from suggestion_strategies.ges_strategy import GESSuggestionStrategy
+
 # Gelecekte eklenecek stratejiler buraya import edilecek
 from suggestion_strategies.insulation_strategy import InsulationStrategy
 

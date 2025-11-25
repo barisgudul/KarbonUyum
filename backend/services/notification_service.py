@@ -7,12 +7,12 @@ Bildirim Servisi - Email ve in-app notifications
 import logging
 import os
 from typing import Optional
-from sqlalchemy.orm import Session
+
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail, Content, Email as SendGridEmail
+from sendgrid.helpers.mail import Mail
+from sqlalchemy.orm import Session
 
 import models
-import schemas
 
 logger = logging.getLogger(__name__)
 

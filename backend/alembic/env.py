@@ -1,21 +1,20 @@
 ### backend/alembic/env.py
 
-import sys
 import os
+import sys
 
 # Projenin ana klasörünü (backend) Python'un arama yoluna ekle
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
 # Mevcut importların altına ekle
 from database import Base
-import models
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config

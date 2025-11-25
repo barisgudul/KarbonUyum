@@ -2,14 +2,14 @@
 """
 This module contains the reporting tasks for the backend.
 """
+import json
 import logging
-from datetime import datetime, timedelta
 import os
 import uuid
-import json
+from datetime import datetime, timedelta
 
-from celery_config import app, DBTask
 import models
+from celery_config import DBTask, app
 
 logger = logging.getLogger(__name__)
 

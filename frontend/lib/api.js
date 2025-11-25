@@ -3,7 +3,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000',
 });
 
 // Token'ı her isteğe otomatik ekleyen interceptor
@@ -19,6 +19,20 @@ api.interceptors.request.use(
     return config;
   },
   (error) => {
+    console.error("API Request Error:", {
+      message: error.message,
+      code: error.code,
+      config: {
+        url: error.config?.url,
+        method: error.config?.method,
+        baseURL: error.config?.baseURL,
+        headers: error.config?.headers
+      },
+      response: error.response ? {
+        status: error.response.status,
+        data: error.response.data
+      } : 'No response received'
+    });
     return Promise.reject(error);
   }
 );
@@ -37,7 +51,7 @@ api.interceptors.response.use(
         }
       );
     }
-    
+
     // Sunucu hatası (500+)
     else if (error.response && error.response.status >= 500) {
       toast.error(
@@ -48,7 +62,7 @@ api.interceptors.response.use(
         }
       );
     }
-    
+
     // Diğer hataları olduğu gibi döndür (component'lerde yakalanacak)
     return Promise.reject(error);
   }

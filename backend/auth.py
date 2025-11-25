@@ -10,9 +10,10 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
-# Diğer dosyalarımızdan gerekli parçaları import ediyoruz
-from database import SessionLocal, get_db
 import schemas
+
+# Diğer dosyalarımızdan gerekli parçaları import ediyoruz
+from database import get_db
 
 # .env dosyasından güvenlik ayarlarını yükle
 SECRET_KEY = os.getenv("SECRET_KEY")

@@ -3,12 +3,10 @@
 This module contains the ingestion tasks for the backend.
 """
 import logging
-from datetime import date
 
-from celery_config import app, DBTask, DeadLetterTask
 import models
-
-from services.events import ActivityValidatedEvent, ActivityInvalidEvent, InvoiceVerifiedEvent
+from celery_config import DeadLetterTask, app
+from services.events import ActivityInvalidEvent, ActivityValidatedEvent, InvoiceVerifiedEvent
 from tasks.utils import idempotent_task
 
 logger = logging.getLogger(__name__)

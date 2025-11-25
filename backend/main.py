@@ -1,38 +1,46 @@
 # backend/main.py
 import logging
 import os
-from datetime import timedelta, datetime
-from typing import List, Union, Dict, Optional
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Union
+
+from fastapi import (
+    APIRouter,  # import APIRouter
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Depends, FastAPI, HTTPException, status, Response, UploadFile, File, Request
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
-from fastapi.responses import PlainTextResponse, FileResponse
 
 # YENİ: Rate Limiting (API maliyet kontrolü için)
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+from sqladmin import Admin, ModelView
+from sqlalchemy.orm import Session
 
 # Gerekli Kütüphaneler
-
 # Diğer Proje Dosyaları
 import auth
+import auth_utils
 import crud
 import models
 import schemas
-from database import get_db
-import auth_utils 
-from carbon_calculator import get_calculator, CarbonCalculator
+from csv_handler import CSVProcessor, get_csv_template
+from database import engine, get_db
+
 # DEPRECATED: Eski dahili hesaplama servisi arşivlendi
 # from services.calculation_service import CalculationService, get_calculation_service
 # YENİ: Climatiq API tabanlı hesaplama servisi
-from services import get_calculation_service, ICalculationService
+from services import ICalculationService, get_calculation_service
 from services.benchmarking_service import BenchmarkingService
-from csv_handler import CSVProcessor, get_csv_template
-from fastapi import APIRouter # import APIRouter
-from sqladmin import Admin, ModelView
-from database import engine
 
 # --- Loglama Yapılandırması ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -225,7 +233,7 @@ def delete_sustainability_target(
 
 
 # ... (CORS ayarları aynı) ...
-origins = ["http://localhost", "http://localhost:3000", "http://localhost:3001"]
+origins = ["*"]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 # Uygulamaya router'ı eklemeyi unutmayın
@@ -586,8 +594,8 @@ def create_activity_data_for_facility(
     # EVENT PIPELINE
     if os.getenv('EVENT_PIPELINE_ENABLED', 'true').lower() == 'true':
         try:
-            from services.validation_service import EmissionRow
             from services.events import ActivityValidatedEvent, publish_event
+            from services.validation_service import EmissionRow
             emission = EmissionRow(
                 activity_id=activity_data.activity_type.value,
                 quantity=activity_data.quantity,
@@ -708,8 +716,8 @@ def update_activity_data(
     # EVENT PIPELINE
     if os.getenv('EVENT_PIPELINE_ENABLED', 'true').lower() == 'true':
         try:
-            from services.validation_service import EmissionRow
             from services.events import ActivityValidatedEvent, publish_event
+            from services.validation_service import EmissionRow
             emission = EmissionRow(
                 activity_id=activity_data.activity_type.value,
                 quantity=activity_data.quantity,
@@ -1636,7 +1644,7 @@ def request_report_generation(
         db.refresh(report)
         
         # Celery task'ine gönder
-        from tasks import generate_cbam_report_async, calculate_roi_analysis_async
+        from tasks import calculate_roi_analysis_async, generate_cbam_report_async
         
         if report_request.report_type == "cbam_xml":
             task = generate_cbam_report_async.delay(report.id)
@@ -1799,7 +1807,6 @@ def download_report(
         db.commit()
         
         # Dosyayı döndür
-        import mimetypes
         
         file_ext = os.path.splitext(report.file_path)[1].lower()
         media_type = "application/xml" if file_ext == ".xml" else "application/json"
@@ -1857,6 +1864,7 @@ def delete_report(
 # YENİ: Tedarikçi Ağı Endpoints (Modül 3.1)
 
 import secrets
+
 
 @app.post("/suppliers/invite", response_model=schemas.SupplierInviteResponse)
 def invite_supplier(

@@ -3,10 +3,12 @@
 # Yeni kodlarda services.calculation_service.CalculationService kullanılmalıdır.
 
 import logging
+
+from fastapi import Depends
 from sqlalchemy.orm import Session
+
 import schemas
 from database import get_db
-from fastapi import Depends
 from services.calculation_service_DEPRECATED import CalculationService
 
 logger = logging.getLogger(__name__)

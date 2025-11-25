@@ -17,7 +17,11 @@ export const AuthProvider = ({ children }) => {
       const { data } = await api.get('/users/me/');
       setUser(data);
     } catch (error) {
-      console.error("Failed to fetch user, token might be invalid", error);
+      if (error.response && error.response.status === 401) {
+        console.warn("Session expired or invalid token.");
+      } else {
+        console.error("Failed to fetch user", error);
+      }
       localStorage.removeItem('token');
       setUser(null);
     } finally {
@@ -40,10 +44,10 @@ export const AuthProvider = ({ children }) => {
     params.append('password', password);
 
     const { data } = await api.post('/token', params, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
     localStorage.setItem('token', data.access_token);
-    api.defaults.headers.Authorization = `Bearer ${data.access_token}`;
+    // Interceptor handles the header
     await fetchUser();
   };
 
@@ -60,13 +64,12 @@ export const AuthProvider = ({ children }) => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
     localStorage.setItem('token', loginResponse.data.access_token);
-    api.defaults.headers.Authorization = `Bearer ${loginResponse.data.access_token}`;
+    // Interceptor handles the header
     await fetchUser();
   };
 
   const logout = () => {
     localStorage.removeItem('token');
-    delete api.defaults.headers.Authorization;
     setUser(null);
     router.push('/login');
   };

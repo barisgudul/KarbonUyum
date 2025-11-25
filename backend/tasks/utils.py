@@ -2,8 +2,8 @@
 """
 This module contains the utility functions for the backend.
 """
-import os
 import logging
+import os
 from functools import wraps
 
 import redis

@@ -1,12 +1,15 @@
 ### backend/services/data_analysis_service.py
-from sqlalchemy.orm import Session
-from sqlalchemy import func
 from datetime import date
-import models
-from typing import Optional, Tuple
-from fastapi import Depends
-from database import get_db
+from typing import Tuple
+
 from dateutil.relativedelta import relativedelta
+from fastapi import Depends
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+import models
+from database import get_db
+
 
 class DataAnalysisService:
     def __init__(self, db: Session):

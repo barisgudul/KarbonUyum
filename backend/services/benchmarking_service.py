@@ -7,12 +7,14 @@ GHG Protocol uyumlu scope bazlı metrikler hesaplar.
 Anonimleştirilmiş verilerle karşılaştırma sağlar (en az 3 firma gerekli).
 """
 
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-import models
-from typing import Optional, Dict, List
 import logging
 from datetime import date, timedelta  # YENİ: Zaman filtrelemesi için
+from typing import Dict, List, Optional
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+import models
 
 logger = logging.getLogger(__name__)
 

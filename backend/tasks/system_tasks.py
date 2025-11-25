@@ -3,7 +3,8 @@
 This module contains the system tasks for the backend.
 """
 import logging
-from celery_config import app, DBTask
+
+from celery_config import DBTask, app
 
 logger = logging.getLogger(__name__)
 

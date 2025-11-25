@@ -1,15 +1,16 @@
 # backend/schemas.py 
 
-from datetime import date, datetime
-from typing import List, Optional
 import enum
+from datetime import date, datetime
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field, computed_field, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
+
 import models
 
 # Rol Enum'ını modellerden import ediyoruz
-from models import ActivityType, CompanyMemberRole, ScopeType, IndustryType
-from typing import Literal
+from models import ActivityType, CompanyMemberRole, IndustryType, ScopeType
+
 
 # -- Strict Validation Base Config --
 class StrictBaseModel(BaseModel):
