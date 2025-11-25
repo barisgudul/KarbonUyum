@@ -5,10 +5,12 @@ This bypasses Alembic migrations and is useful for quick local development setup
 """
 
 import sys
+
 sys.path.append('/Users/baris/Desktop/Dev/KarbonUyum/backend')
 
-from database import engine, Base
 import models  # Import all models to ensure they're registered with Base
+from database import Base, engine
+
 
 def init_db():
     """Create all database tables."""
