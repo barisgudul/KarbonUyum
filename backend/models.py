@@ -193,15 +193,15 @@ class IndustryTemplate(Base):
 # Bu model, dahili emisyon faktörü yönetimini sağlamak için kullanılıyordu.
 # Climatiq API'ye geçişle beraber, artık gerekli değildir.
 # Arşiv: backend/archive/models_EmissionFactor_v1.py
-#
-# class EmissionFactor(Base):
-#     __tablename__ = "emission_factors"
-#     key = Column(String, primary_key=True, index=True)
-#     value = Column(Float, nullable=False)
-#     unit = Column(String, nullable=False)
-#     source = Column(String, nullable=True)
-#     year = Column(Integer, nullable=True)
-#     description = Column(String, nullable=True)
+
+class EmissionFactor(Base):
+    __tablename__ = "emission_factors"
+    key = Column(String, primary_key=True, index=True)
+    value = Column(Float, nullable=False)
+    unit = Column(String, nullable=False)
+    source = Column(String, nullable=True)
+    year = Column(Integer, nullable=True)
+    description = Column(String, nullable=True)
 
 # YENİ: Bildirim Modeli (Modül 2.1)
 class Notification(Base):
