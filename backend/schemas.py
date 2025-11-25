@@ -247,27 +247,30 @@ class SuggestionParameter(SuggestionParameterBase):
     class Config:
         from_attributes = True
 
-# ESKI: EmissionFactor SCHEMAS - SILINDI (Climatiq API kullanılıyor)
-# Dahili emisyon faktörü yönetimi için kullanılan Pydantic modelleri
-# Climatiq API'ye geçişle beraber artık gerekli değildir.
-#
-# class EmissionFactorBase(BaseModel):
-#     key: str
-#     value: float
-#     unit: str
-#     source: Optional[str] = None
-#     year: Optional[int] = None
-#     description: Optional[str] = None
-#
-# class EmissionFactorCreate(EmissionFactorBase):
-#     pass
-#
-# class EmissionFactorUpdate(BaseModel):
-#     ...
-#
-# class EmissionFactor(EmissionFactorBase):
-#     class Config:
-#         from_attributes = True
+# ESKI: EmissionFactor SCHEMAS - GERİ EKLENDİ (Fallback servisi için gerekli)
+
+class EmissionFactorBase(BaseModel):
+    key: str
+    value: float
+    unit: str
+    source: Optional[str] = None
+    year: Optional[int] = None
+    description: Optional[str] = None
+
+class EmissionFactorCreate(EmissionFactorBase):
+    pass
+
+class EmissionFactorUpdate(BaseModel):
+    # Güncelleme sırasında tüm alanlar opsiyonel olabilir
+    value: Optional[float] = None
+    unit: Optional[str] = None
+    source: Optional[str] = None
+    year: Optional[int] = None
+    description: Optional[str] = None
+
+class EmissionFactor(EmissionFactorBase):
+    class Config:
+        from_attributes = True
 
 # -- Benchmarking Schemas --
 
